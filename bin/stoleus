@@ -1,0 +1,404 @@
+#!/usr/bin/env bash
+
+# ==============================================================================
+# Stoleus CLI - Main Entry Point
+# ==============================================================================
+#
+# This is the main executable for the Stoleus administration tools.
+#
+# When we eventually install Stoleus, the user will execute commands such as:
+#
+#     stoleus help
+#     stoleus version
+#     stoleus health
+#
+# This file is responsible for:
+#
+#   1. Determining where the Stoleus project is located.
+#   2. Loading shared functions.
+#   3. Reading the command entered by the user.
+#   4. Routing that command to the appropriate command implementation.
+#
+# IMPORTANT:
+# Keep this file relatively small.
+# The actual implementation of individual commands belongs in:
+#
+#     commands/
+#
+# Shared reusable functions belong in:
+#
+#     lib/
+#
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Enable strict Bash error handling.
+#
+# set
+#     Changes Bash shell options.
+#
+# -E
+#     Makes ERR traps propagate into functions and subshells.
+#
+# -e
+#     Stops the script when a command fails instead of blindly continuing.
+#
+# -u
+#     Treats the use of an undefined variable as an error.
+#
+# -o pipefail
+#     If any command inside a pipeline fails, the entire pipeline is considered
+#     failed.
+#
+# Together these options make infrastructure scripts safer and help us detect
+# errors early.
+# ------------------------------------------------------------------------------
+set -Eeuo pipefail
+
+
+# ------------------------------------------------------------------------------
+# Determine the absolute directory containing THIS script.
+#
+# BASH_SOURCE[0]
+#     Contains the path of the currently executing Bash script.
+#
+# dirname
+#     Removes the filename and returns only its directory.
+#
+# Example:
+#
+#     /home/ivan/tools/bin/stoleus
+#
+# becomes:
+#
+#     /home/ivan/tools/bin
+#
+# cd -- "..."
+#     Changes into that directory.
+#
+#     The "--" tells `cd` that anything after it should be treated as an
+#     argument rather than as a command option. This protects against unusual
+#     directory names beginning with "-".
+#
+# pwd
+#     Prints the absolute path of the current directory.
+#
+# $(...)
+#     This is Bash "command substitution".
+#
+#     Bash executes the command inside $(...) and uses its output as the value.
+#
+# readonly
+#     Makes the variable immutable after it has been assigned.
+#
+# Result example:
+#
+#     SCRIPT_DIR=/home/ivan/tools/bin
+# ------------------------------------------------------------------------------
+readonly SCRIPT_DIR="$(
+    cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+    pwd
+)"
+
+
+# ------------------------------------------------------------------------------
+# Determine the root directory of the entire tools project.
+#
+# SCRIPT_DIR points to:
+#
+#     /home/ivan/tools/bin
+#
+# ".." means the parent directory.
+#
+# Therefore:
+#
+#     /home/ivan/tools/bin/..
+#
+# resolves to:
+#
+#     /home/ivan/tools
+#
+# Again, `pwd` converts it into a clean absolute path.
+#
+# Result example:
+#
+#     PROJECT_ROOT=/home/ivan/tools
+# ------------------------------------------------------------------------------
+readonly PROJECT_ROOT="$(
+    cd -- "${SCRIPT_DIR}/.."
+    pwd
+)"
+
+
+# ------------------------------------------------------------------------------
+# Load our shared Bash functions.
+#
+# source
+#     Reads another Bash file and executes it inside the CURRENT shell.
+#
+# This is conceptually similar to bringing reusable functionality into the
+# current script.
+#
+# We will place shared functions in:
+#
+#     lib/common.sh
+#
+# `${PROJECT_ROOT}` expands the value stored in PROJECT_ROOT.
+#
+# Therefore, if:
+#
+#     PROJECT_ROOT=/home/ivan/tools
+#
+# this becomes:
+#
+#     source /home/ivan/tools/lib/common.sh
+#
+# After this line executes, functions defined inside common.sh can be called
+# from this script.
+# ------------------------------------------------------------------------------
+source "${PROJECT_ROOT}/lib/common.sh"
+
+
+# ==============================================================================
+# main
+# ==============================================================================
+#
+# This is the main function of the Stoleus CLI.
+#
+# "$@"
+#     Represents ALL arguments passed to the script.
+#
+# Example:
+#
+#     stoleus version
+#
+# means the first argument ($1) is:
+#
+#     version
+#
+# Example:
+#
+#     stoleus health --verbose
+#
+# gives:
+#
+#     $1 = health
+#     $2 = --verbose
+#
+# We deliberately keep argument routing here while command implementations
+# live under commands/.
+# ==============================================================================
+main() {
+
+    # --------------------------------------------------------------------------
+    # Read the first command-line argument.
+    #
+    # ${1:-help}
+    #
+    # means:
+    #
+    #     Use $1 if it exists and is not empty.
+    #
+    # otherwise use:
+    #
+    #     help
+    #
+    # Therefore:
+    #
+    #     stoleus version
+    #
+    # produces:
+    #
+    #     command="version"
+    #
+    # while simply running:
+    #
+    #     stoleus
+    #
+    # produces:
+    #
+    #     command="help"
+    #
+    # `local` means this variable exists only inside this function.
+    # --------------------------------------------------------------------------
+    local command="${1:-help}"
+
+
+    # --------------------------------------------------------------------------
+    # `case` is Bash's multi-choice conditional statement.
+    #
+    # It is similar in purpose to a C# switch statement:
+    #
+    #     switch (command)
+    #
+    # We compare the value stored in `$command` against several possible
+    # patterns.
+    # --------------------------------------------------------------------------
+    case "$command" in
+
+
+        # ----------------------------------------------------------------------
+        # These three inputs all mean the same thing:
+        #
+        #     stoleus help
+        #     stoleus -h
+        #     stoleus --help
+        #
+        # The "|" inside a case pattern means OR.
+        #
+        # So:
+        #
+        #     help|-h|--help
+        #
+        # means:
+        #
+        #     help OR -h OR --help
+        # ----------------------------------------------------------------------
+        help|-h|--help)
+
+            # ------------------------------------------------------------------
+            # `shift` removes the first positional argument.
+            #
+            # Example before shift:
+            #
+            #     $1 = help
+            #     $2 = something
+            #
+            # After shift:
+            #
+            #     $1 = something
+            #
+            # This is useful because we already processed the command name.
+            #
+            # `|| true` means:
+            #
+            #     If shift cannot run because there are no arguments, do not
+            #     treat that as a fatal error.
+            #
+            # This is necessary because strict mode (-e) is enabled.
+            # ------------------------------------------------------------------
+            shift || true
+
+
+            # ------------------------------------------------------------------
+            # Call our shared command dispatcher.
+            #
+            # run_command will be implemented in:
+            #
+            #     lib/common.sh
+            #
+            # The first argument tells it which command script to execute:
+            #
+            #     help
+            #
+            # "$@"
+            #     Passes any remaining command-line arguments forward.
+            # ------------------------------------------------------------------
+            run_command "help" "$@"
+
+            # `;;` marks the end of this case branch.
+            ;;
+            
+
+        # ----------------------------------------------------------------------
+        # Support all of these:
+        #
+        #     stoleus version
+        #     stoleus -v
+        #     stoleus --version
+        # ----------------------------------------------------------------------
+        version|-v|--version)
+
+            # Remove the already processed "version", "-v", or "--version"
+            # argument from the positional argument list.
+            shift || true
+
+            # Execute:
+            #
+            #     commands/version.sh
+            #
+            # through our shared run_command function.
+            run_command "version" "$@"
+
+            # End this case branch.
+            ;;
+
+
+        # ----------------------------------------------------------------------
+        # `*` is the fallback pattern.
+        #
+        # It matches anything that was not handled above.
+        #
+        # Example:
+        #
+        #     stoleus something-that-does-not-exist
+        #
+        # will arrive here.
+        # ----------------------------------------------------------------------
+        *)
+
+            # ------------------------------------------------------------------
+            # Display an error message.
+            #
+            # print_error will be a reusable function from:
+            #
+            #     lib/common.sh
+            #
+            # `$command` expands to the command entered by the user.
+            # ------------------------------------------------------------------
+            print_error "Unknown command: $command"
+
+
+            # Print an empty line to make the CLI output easier to read.
+            echo
+
+
+            # After showing the error, display the help command so the user
+            # can see which commands are actually available.
+            run_command "help"
+
+
+            # ------------------------------------------------------------------
+            # Return exit code 2.
+            #
+            # Conventionally, exit code 0 means success.
+            #
+            # A non-zero value means something failed.
+            #
+            # We use 2 here to represent invalid command/usage.
+            #
+            # Because we are inside a function, we use `return`.
+            #
+            # At the top script level we would normally use `exit`.
+            # ------------------------------------------------------------------
+            return 2
+
+            # End fallback branch.
+            ;;
+    esac
+}
+
+
+# ==============================================================================
+# Start the program.
+#
+# Defining `main()` above does NOT automatically execute it.
+#
+# We explicitly call it here.
+#
+# "$@"
+#     Passes every argument originally provided to this script into main().
+#
+# Example:
+#
+#     ./bin/stoleus version
+#
+# effectively becomes:
+#
+#     main "version"
+#
+# This pattern gives Bash scripts a clear entry point similar in concept to
+# Main() in C#.
+# ==============================================================================
+main "$@"
