@@ -78,23 +78,16 @@ set -Eeuo pipefail
 #     Changes into that directory.
 #
 #     The "--" tells `cd` that anything after it should be treated as an
-#     argument rather than as a command option. This protects against unusual
-#     directory names beginning with "-".
+#     argument rather than as a command option.
 #
 # pwd
 #     Prints the absolute path of the current directory.
 #
 # $(...)
-#     This is Bash "command substitution".
-#
-#     Bash executes the command inside $(...) and uses its output as the value.
+#     Bash command substitution.
 #
 # readonly
-#     Makes the variable immutable after it has been assigned.
-#
-# Result example:
-#
-#     SCRIPT_DIR=/home/ivan/tools/bin
+#     Makes the variable immutable after assignment.
 # ------------------------------------------------------------------------------
 readonly SCRIPT_DIR="$(
     cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
@@ -109,21 +102,15 @@ readonly SCRIPT_DIR="$(
 #
 #     /home/ivan/tools/bin
 #
-# ".." means the parent directory.
+# ".." means parent directory.
 #
 # Therefore:
 #
 #     /home/ivan/tools/bin/..
 #
-# resolves to:
+# becomes:
 #
 #     /home/ivan/tools
-#
-# Again, `pwd` converts it into a clean absolute path.
-#
-# Result example:
-#
-#     PROJECT_ROOT=/home/ivan/tools
 # ------------------------------------------------------------------------------
 readonly PROJECT_ROOT="$(
     cd -- "${SCRIPT_DIR}/.."
@@ -132,30 +119,22 @@ readonly PROJECT_ROOT="$(
 
 
 # ------------------------------------------------------------------------------
-# Load our shared Bash functions.
+# Load shared Bash functions.
 #
 # source
 #     Reads another Bash file and executes it inside the CURRENT shell.
 #
-# This is conceptually similar to bringing reusable functionality into the
-# current script.
-#
-# We will place shared functions in:
+# This loads:
 #
 #     lib/common.sh
 #
-# `${PROJECT_ROOT}` expands the value stored in PROJECT_ROOT.
+# and makes functions such as:
 #
-# Therefore, if:
+#     run_command
+#     print_error
+#     read_version
 #
-#     PROJECT_ROOT=/home/ivan/tools
-#
-# this becomes:
-#
-#     source /home/ivan/tools/lib/common.sh
-#
-# After this line executes, functions defined inside common.sh can be called
-# from this script.
+# available here.
 # ------------------------------------------------------------------------------
 source "${PROJECT_ROOT}/lib/common.sh"
 
@@ -173,9 +152,9 @@ source "${PROJECT_ROOT}/lib/common.sh"
 #
 #     stoleus version
 #
-# means the first argument ($1) is:
+# gives:
 #
-#     version
+#     $1 = version
 #
 # Example:
 #
@@ -186,9 +165,8 @@ source "${PROJECT_ROOT}/lib/common.sh"
 #     $1 = health
 #     $2 = --verbose
 #
-# We deliberately keep argument routing here while command implementations
-# live under commands/.
 # ==============================================================================
+
 main() {
 
     # --------------------------------------------------------------------------
@@ -198,183 +176,208 @@ main() {
     #
     # means:
     #
-    #     Use $1 if it exists and is not empty.
+    #     use $1 if it exists
     #
-    # otherwise use:
+    # otherwise:
     #
-    #     help
+    #     use "help"
     #
-    # Therefore:
-    #
-    #     stoleus version
-    #
-    # produces:
-    #
-    #     command="version"
-    #
-    # while simply running:
+    # Therefore simply running:
     #
     #     stoleus
     #
-    # produces:
+    # behaves like:
     #
-    #     command="help"
-    #
-    # `local` means this variable exists only inside this function.
+    #     stoleus help
     # --------------------------------------------------------------------------
     local command="${1:-help}"
 
 
     # --------------------------------------------------------------------------
-    # `case` is Bash's multi-choice conditional statement.
+    # `case` is similar to a C# switch statement.
     #
-    # It is similar in purpose to a C# switch statement:
-    #
-    #     switch (command)
-    #
-    # We compare the value stored in `$command` against several possible
-    # patterns.
+    # We compare the value stored in `command` against several possible
+    # command names.
     # --------------------------------------------------------------------------
     case "$command" in
 
 
-        # ----------------------------------------------------------------------
-        # These three inputs all mean the same thing:
+        # ======================================================================
+        # HELP
+        # ======================================================================
+        #
+        # These are equivalent:
         #
         #     stoleus help
         #     stoleus -h
         #     stoleus --help
         #
-        # The "|" inside a case pattern means OR.
-        #
-        # So:
-        #
-        #     help|-h|--help
-        #
-        # means:
-        #
-        #     help OR -h OR --help
-        # ----------------------------------------------------------------------
+        # "|" means OR inside a case pattern.
+        # ======================================================================
         help|-h|--help)
 
             # ------------------------------------------------------------------
-            # `shift` removes the first positional argument.
+            # Remove the first positional argument because we have already
+            # processed it.
             #
-            # Example before shift:
-            #
-            #     $1 = help
-            #     $2 = something
-            #
-            # After shift:
-            #
-            #     $1 = something
-            #
-            # This is useful because we already processed the command name.
-            #
-            # `|| true` means:
-            #
-            #     If shift cannot run because there are no arguments, do not
-            #     treat that as a fatal error.
-            #
-            # This is necessary because strict mode (-e) is enabled.
+            # `|| true` prevents strict mode from treating an empty shift as
+            # fatal.
             # ------------------------------------------------------------------
             shift || true
 
 
             # ------------------------------------------------------------------
-            # Call our shared command dispatcher.
+            # Dispatch to:
             #
-            # run_command will be implemented in:
+            #     commands/help.sh
             #
-            #     lib/common.sh
-            #
-            # The first argument tells it which command script to execute:
-            #
-            #     help
-            #
-            # "$@"
-            #     Passes any remaining command-line arguments forward.
+            # Any remaining arguments are forwarded using "$@".
             # ------------------------------------------------------------------
             run_command "help" "$@"
 
-            # `;;` marks the end of this case branch.
             ;;
             
 
-        # ----------------------------------------------------------------------
-        # Support all of these:
+        # ======================================================================
+        # VERSION
+        # ======================================================================
+        #
+        # These are equivalent:
         #
         #     stoleus version
         #     stoleus -v
         #     stoleus --version
-        # ----------------------------------------------------------------------
+        # ======================================================================
         version|-v|--version)
 
-            # Remove the already processed "version", "-v", or "--version"
-            # argument from the positional argument list.
+            # Remove the already processed command argument.
             shift || true
 
-            # Execute:
+
+            # Dispatch to:
             #
             #     commands/version.sh
-            #
-            # through our shared run_command function.
+            # ------------------------------------------------------------------
             run_command "version" "$@"
 
-            # End this case branch.
             ;;
 
 
-        # ----------------------------------------------------------------------
+        # ======================================================================
+        # HEALTH
+        # ======================================================================
+        #
+        # Supports:
+        #
+        #     stoleus health
+        #
+        # Later it can also support arguments such as:
+        #
+        #     stoleus health --verbose
+        #
+        #     stoleus health --repair
+        #
+        # The actual implementation belongs in:
+        #
+        #     commands/health.sh
+        #
+        # which then uses:
+        #
+        #     lib/health.sh
+        #
+        # Mental model:
+        #
+        #     bin/stoleus
+        #          |
+        #          v
+        #     commands/health.sh
+        #          |
+        #          v
+        #     lib/health.sh
+        #
+        # ======================================================================
+        health)
+
+            # ------------------------------------------------------------------
+            # Remove the first argument:
+            #
+            #     health
+            #
+            # This leaves any additional arguments available.
+            #
+            # Example:
+            #
+            # Before:
+            #
+            #     $1 = health
+            #     $2 = --verbose
+            #
+            # After shift:
+            #
+            #     $1 = --verbose
+            # ------------------------------------------------------------------
+            shift || true
+
+
+            # ------------------------------------------------------------------
+            # Dispatch to:
+            #
+            #     commands/health.sh
+            #
+            # "$@"
+            #     forwards all remaining arguments.
+            # ------------------------------------------------------------------
+            run_command "health" "$@"
+
+            ;;
+
+
+        # ======================================================================
+        # UNKNOWN COMMAND
+        # ======================================================================
+        #
         # `*` is the fallback pattern.
         #
-        # It matches anything that was not handled above.
+        # It matches anything not handled above.
         #
         # Example:
         #
-        #     stoleus something-that-does-not-exist
+        #     stoleus something
         #
-        # will arrive here.
-        # ----------------------------------------------------------------------
+        # arrives here.
+        # ======================================================================
         *)
 
             # ------------------------------------------------------------------
-            # Display an error message.
-            #
-            # print_error will be a reusable function from:
-            #
-            #     lib/common.sh
-            #
-            # `$command` expands to the command entered by the user.
+            # Print the error to stderr using our shared helper.
             # ------------------------------------------------------------------
             print_error "Unknown command: $command"
 
 
-            # Print an empty line to make the CLI output easier to read.
+            # Print a blank line for readability.
             echo
 
 
-            # After showing the error, display the help command so the user
-            # can see which commands are actually available.
+            # ------------------------------------------------------------------
+            # Show help so the user can immediately see valid commands.
+            # ------------------------------------------------------------------
             run_command "help"
 
 
             # ------------------------------------------------------------------
             # Return exit code 2.
             #
-            # Conventionally, exit code 0 means success.
+            # Convention:
             #
-            # A non-zero value means something failed.
+            #     0 = success
+            #     non-zero = failure
             #
-            # We use 2 here to represent invalid command/usage.
+            # We use 2 for invalid command/usage.
             #
             # Because we are inside a function, we use `return`.
-            #
-            # At the top script level we would normally use `exit`.
             # ------------------------------------------------------------------
             return 2
 
-            # End fallback branch.
             ;;
     esac
 }
@@ -382,23 +385,26 @@ main() {
 
 # ==============================================================================
 # Start the program.
+# ==============================================================================
 #
-# Defining `main()` above does NOT automatically execute it.
+# Defining main() does not execute it automatically.
 #
-# We explicitly call it here.
+# We explicitly call:
+#
+#     main "$@"
 #
 # "$@"
-#     Passes every argument originally provided to this script into main().
+#     forwards all arguments originally given to the program.
 #
 # Example:
 #
-#     ./bin/stoleus version
+#     ./bin/stoleus health
 #
 # effectively becomes:
 #
-#     main "version"
+#     main "health"
 #
-# This pattern gives Bash scripts a clear entry point similar in concept to
-# Main() in C#.
+# This gives our Bash program a clear entry point similar to Main() in C#.
 # ==============================================================================
+
 main "$@"
