@@ -1131,7 +1131,7 @@ check_disk_usage() {
         fi
 
     done < <(
-        df -P -x tmpfs -x devtmpfs 2>/dev/null |
+        df -P -x tmpfs -x devtmpfs -x efivarfs 2>/dev/null |
             awk 'NR > 1 {print $NF, $(NF-1)}'
     )
 
