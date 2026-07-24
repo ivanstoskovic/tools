@@ -70,6 +70,12 @@ set -Eeuo pipefail
 HEALTH_FAILURES=0
 HEALTH_WARNINGS=0
 
+# IMPORTANT DESIGN RULE:
+# Individual health checks record FAIL/WARN results in these counters but return
+# success to the dispatcher. This lets the report continue through every check.
+# commands/health.sh returns the final non-zero process exit code only after the
+# complete report has been printed.
+
 
 # ==============================================================================
 # health_pass
@@ -346,7 +352,7 @@ check_time_sync() {
         "Time Sync" \
         "Chrony is not synchronized"
 
-    return 1
+    return 0
 }
 
 # ==============================================================================
@@ -463,7 +469,7 @@ check_ssh() {
             "SSH" \
             "ssh.socket exists but is not active"
 
-        return 1
+        return 0
     fi
 
 
@@ -489,7 +495,7 @@ check_ssh() {
             "SSH" \
             "ssh.service exists but is not active"
 
-        return 1
+        return 0
     fi
 
 
@@ -537,15 +543,7 @@ check_ssh() {
 check_firewall() {
 
     # --------------------------------------------------------------------------
-    # Check whether the `ufw` command exists.
-    #
-    # `command -v ufw`
-    #     Searches for the ufw executable in PATH.
-    #
-    # `>/dev/null 2>&1`
-    #     Suppresses both normal and error output.
-    #
-    # If UFW is not installed, we SKIP the check rather than fail.
+    # Check whether UFW is installed.
     # --------------------------------------------------------------------------
     if ! command -v ufw >/dev/null 2>&1; then
 
@@ -558,26 +556,56 @@ check_firewall() {
 
 
     # --------------------------------------------------------------------------
-    # Ask UFW for its current status.
+    # UFW's `status` command requires root privileges on Ubuntu.
     #
-    # Typical output:
+    # IMPORTANT:
+    #     We do NOT call `sudo` from inside the health check.
     #
-    #     Status: active
+    # Why?
+    #     - sudo may prompt for a password and hang an automated health check.
+    #     - systemd jobs must be non-interactive.
+    #     - privilege escalation should be explicit.
     #
-    # or:
+    # When run manually as a normal user, report that an authoritative firewall
+    # check requires root instead of incorrectly claiming that UFW is inactive.
     #
-    #     Status: inactive
+    # `$EUID`
+    #     Effective user ID of the current Bash process.
     #
-    # We pipe the output to grep.
-    #
-    # `grep -q`
-    #     Quiet mode; only the exit code matters.
-    #
-    # `^Status: active`
-    #     The ^ means the match must begin at the start of the line.
+    # Root always has EUID 0.
     # --------------------------------------------------------------------------
-    if ufw status 2>/dev/null |
-        grep -q '^Status: active'; then
+    if (( EUID != 0 )); then
+
+        health_warn \
+            "Firewall" \
+            "Status check requires root; run 'sudo stoleus health'"
+
+        return 0
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Capture UFW output so we can distinguish:
+    #
+    #     active
+    #     inactive
+    #     command/error condition
+    #
+    # instead of treating every non-successful parse as "inactive".
+    # --------------------------------------------------------------------------
+    local ufw_output
+
+    if ! ufw_output="$(ufw status 2>&1)"; then
+
+        health_warn \
+            "Firewall" \
+            "Unable to read UFW status"
+
+        return 0
+    fi
+
+
+    if grep -q '^Status: active' <<< "$ufw_output"; then
 
         health_pass \
             "Firewall" \
@@ -587,17 +615,24 @@ check_firewall() {
     fi
 
 
-    # --------------------------------------------------------------------------
-    # If UFW exists but is not active, this is a real health problem.
-    #
-    # We report FAIL because the server has firewall tooling installed but the
-    # protection is currently disabled.
-    # --------------------------------------------------------------------------
-    health_fail \
-        "Firewall" \
-        "UFW is installed but inactive"
+    if grep -q '^Status: inactive' <<< "$ufw_output"; then
 
-    return 1
+        health_fail \
+            "Firewall" \
+            "UFW is installed but inactive"
+
+        # Health checks record the failure but return 0 so the remaining checks
+        # still run. commands/health.sh decides the final process exit code from
+        # HEALTH_FAILURES after the complete report is produced.
+        return 0
+    fi
+
+
+    health_warn \
+        "Firewall" \
+        "UFW returned an unexpected status"
+
+    return 0
 }
 
 # ==============================================================================
@@ -629,13 +664,6 @@ check_docker() {
 
     # --------------------------------------------------------------------------
     # Check whether the Docker CLI exists.
-    #
-    # `command -v docker`
-    #     Searches PATH for the `docker` executable.
-    #
-    # If it cannot be found, Docker is not installed or not available in PATH.
-    #
-    # We report SKIP because some servers may intentionally not use Docker.
     # --------------------------------------------------------------------------
     if ! command -v docker >/dev/null 2>&1; then
 
@@ -648,49 +676,66 @@ check_docker() {
 
 
     # --------------------------------------------------------------------------
-    # Docker exists, so now verify whether the Docker daemon is reachable.
+    # On systemd-based Linux servers, first inspect the Docker service itself.
     #
-    # `docker info`
-    #     Asks the Docker client to communicate with the Docker daemon.
+    # This lets us distinguish:
     #
-    # If the daemon is running and the current user has permission to access it,
-    # this command returns exit code 0.
+    #     service stopped
     #
-    # We redirect output because we only care about the exit status here.
+    # from:
+    #
+    #     service running but current user cannot access /var/run/docker.sock
+    # --------------------------------------------------------------------------
+    if command -v systemctl >/dev/null 2>&1 &&
+       systemctl cat docker.service >/dev/null 2>&1; then
+
+        if ! systemctl is-active --quiet docker.service; then
+
+            health_fail \
+                "Docker" \
+                "Docker service is installed but not running"
+
+            return 0
+        fi
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # `docker info` performs an actual client -> daemon communication test.
     # --------------------------------------------------------------------------
     if docker info >/dev/null 2>&1; then
 
         health_pass \
             "Docker" \
-            "Docker Engine is running"
+            "Docker Engine is running and accessible"
 
         return 0
     fi
 
 
     # --------------------------------------------------------------------------
-    # Docker CLI exists, but `docker info` failed.
-    #
-    # Common reasons include:
-    #
-    #     - Docker service is stopped
-    #     - Docker daemon failed to start
-    #     - Current user lacks permission to access the Docker socket
-    #
-    # At this stage we report a failure.
-    #
-    # Later we can split this into more detailed checks:
-    #
-    #     Docker service
-    #     Docker permissions
-    #     Docker Compose
-    #     unhealthy containers
+    # If systemd says Docker is active but `docker info` fails for a non-root
+    # user, permissions are a common cause. Check group membership so the report
+    # gives a more useful diagnosis.
     # --------------------------------------------------------------------------
+    if (( EUID != 0 )) && command -v id >/dev/null 2>&1; then
+
+        if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+
+            health_fail \
+                "Docker Access" \
+                "Current user is not a member of the docker group"
+
+            return 0
+        fi
+    fi
+
+
     health_fail \
         "Docker" \
-        "Docker exists but the daemon is unavailable"
+        "Docker daemon is running but cannot be reached by this user"
 
-    return 1
+    return 0
 }
 
 # ==============================================================================
@@ -780,7 +825,7 @@ check_docker_compose() {
         "Docker Compose" \
         "Compose plugin is not available"
 
-    return 1
+    return 0
 }
 
 # ==============================================================================
@@ -863,7 +908,7 @@ check_postgresql() {
             "PostgreSQL" \
             "Service is installed but not running"
 
-        return 1
+        return 0
     fi
 
 
@@ -932,7 +977,7 @@ check_postgresql() {
         "PostgreSQL" \
         "Service running but not accepting connections"
 
-    return 1
+    return 0
 }
 
 # ==============================================================================
@@ -1257,7 +1302,7 @@ check_memory() {
             "Memory" \
             "Critical: ${available_mb} MB available"
 
-        return 1
+        return 0
     fi
 
 
@@ -1493,7 +1538,7 @@ check_github_runners() {
     #
     # If any runner failed:
     #
-    #     return 1
+    #     return 0
     #
     # Otherwise:
     #
@@ -1504,7 +1549,7 @@ check_github_runners() {
     # This return code only communicates the result of this function.
     # --------------------------------------------------------------------------
     if (( runner_failed > 0 )); then
-        return 1
+        return 0
     fi
 
     return 0
@@ -1767,70 +1812,78 @@ check_network() {
 check_logical_volume_manager() {
 
     # --------------------------------------------------------------------------
-    # LVM provides several administration commands:
+    # `lsblk` can identify LVM logical volumes without requiring root.
     #
-    #     pvs
-    #         Shows Physical Volumes.
+    # Example TYPE values:
     #
-    #     vgs
-    #         Shows Volume Groups.
+    #     disk
+    #     part
+    #     lvm
     #
-    #     lvs
-    #         Shows Logical Volumes.
+    # This gives us a safe first-level check even during a manual health run as
+    # the deployer user.
+    # --------------------------------------------------------------------------
+    if command -v lsblk >/dev/null 2>&1; then
+
+        if ! lsblk -rno TYPE 2>/dev/null | grep -qx 'lvm'; then
+
+            health_skip \
+                "LVM" \
+                "Server does not use LVM"
+
+            return 0
+        fi
+    else
+
+        # Without lsblk we can only continue if the normal LVM tools exist.
+        if ! command -v pvs >/dev/null 2>&1 ||
+           ! command -v vgs >/dev/null 2>&1 ||
+           ! command -v lvs >/dev/null 2>&1; then
+
+            health_skip \
+                "LVM" \
+                "LVM inspection tools are not available"
+
+            return 0
+        fi
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # At this point LVM is present.
     #
-    # We require all three tools for this check.
-    #
-    # `command -v`
-    #     Tests whether each executable exists in PATH.
+    # The detailed pvs/vgs/lvs metadata scan can require elevated privileges on
+    # some Linux configurations. A normal-user health run should not falsely
+    # report storage corruption merely because the user cannot open block
+    # devices or LVM lock files.
+    # --------------------------------------------------------------------------
+    if (( EUID != 0 )); then
+
+        health_pass \
+            "LVM" \
+            "LVM volumes detected; deep metadata check requires root"
+
+        return 0
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # A root health run should have the standard LVM administration tools.
     # --------------------------------------------------------------------------
     if ! command -v pvs >/dev/null 2>&1 ||
        ! command -v vgs >/dev/null 2>&1 ||
        ! command -v lvs >/dev/null 2>&1; then
 
-        health_skip \
+        health_warn \
             "LVM" \
-            "LVM tools are not installed"
+            "LVM detected but pvs/vgs/lvs tools are missing"
 
         return 0
     fi
 
 
     # --------------------------------------------------------------------------
-    # Check whether any LVM Physical Volume exists.
-    #
-    # `pvs --noheadings`
-    #     Removes the column headings so only actual data remains.
-    #
-    # `grep -q '[^[:space:]]'`
-    #     Checks whether there is at least one non-whitespace character.
-    #
-    # If no LVM physical volume exists, the server simply does not use LVM.
-    # That is valid for stoleusapp, so we report SKIP rather than FAIL.
-    # --------------------------------------------------------------------------
-    if ! pvs --noheadings 2>/dev/null |
-        grep -q '[^[:space:]]'; then
-
-        health_skip \
-            "LVM" \
-            "Server does not use LVM"
-
-        return 0
-    fi
-
-
-    # --------------------------------------------------------------------------
-    # If we got here, LVM physical volumes exist.
-    #
-    # Now verify that all three basic LVM queries work successfully.
-    #
-    # We suppress their output because this is only the summary health report.
-    #
-    # A failure here may indicate:
-    #
-    #     - corrupted LVM metadata
-    #     - missing devices
-    #     - permission issues
-    #     - storage subsystem problems
+    # Perform the deeper metadata validation only when running as root.
     # --------------------------------------------------------------------------
     if ! pvs >/dev/null 2>&1 ||
        ! vgs >/dev/null 2>&1 ||
@@ -1840,16 +1893,19 @@ check_logical_volume_manager() {
             "LVM" \
             "LVM metadata could not be read"
 
-        return 1
+        return 0
     fi
 
 
-    # --------------------------------------------------------------------------
-    # LVM exists and all basic metadata queries succeeded.
-    # --------------------------------------------------------------------------
     health_pass \
         "LVM" \
-        "LVM volumes detected and readable"
+        "LVM volumes detected and metadata is readable"
 
     return 0
+}
+
+# Backward-compatible shorter alias. Either function name can be used by
+# commands/health.sh while we gradually standardize naming.
+check_lvm() {
+    check_logical_volume_manager
 }
