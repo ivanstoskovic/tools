@@ -89,8 +89,41 @@ set -Eeuo pipefail
 # readonly
 #     Makes the variable immutable after assignment.
 # ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Determine the REAL location of this script.
+#
+# This matters because the installed global command:
+#
+#     /usr/local/bin/stoleus
+#
+# is a symbolic link pointing to:
+#
+#     /opt/stoleus-tools/bin/stoleus
+#
+# If we used BASH_SOURCE[0] directly, Bash could see:
+#
+#     /usr/local/bin/stoleus
+#
+# and incorrectly calculate PROJECT_ROOT as /usr/local.
+#
+# `readlink -f`
+#     Resolves symbolic links and returns the final real file path.
+#
+# Example:
+#
+#     /usr/local/bin/stoleus
+#              |
+#              v
+#     /opt/stoleus-tools/bin/stoleus
+#
+# REAL_SCRIPT_PATH therefore becomes:
+#
+#     /opt/stoleus-tools/bin/stoleus
+# ------------------------------------------------------------------------------
+readonly REAL_SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+
 readonly SCRIPT_DIR="$(
-    cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+    cd -- "$(dirname -- "$REAL_SCRIPT_PATH")"
     pwd
 )"
 
