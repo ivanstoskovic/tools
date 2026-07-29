@@ -364,6 +364,58 @@ main() {
 
             ;;
 
+		        # ======================================================================
+        # SETUP
+        # ======================================================================
+        #
+        # Supports:
+        #
+        #     stoleus setup chrony
+        #
+        # Later this can also support:
+        #
+        #     stoleus setup docker
+        #     stoleus setup firewall
+        #     stoleus setup postgresql
+        #     stoleus setup server
+        #
+        # The actual CLI routing for setup components lives in:
+        #
+        #     commands/setup.sh
+        # ======================================================================
+        setup)
+
+            # ------------------------------------------------------------------
+            # Remove the already processed top-level command:
+            #
+            #     setup
+            #
+            # Example:
+            #
+            # Before:
+            #
+            #     $1 = setup
+            #     $2 = chrony
+            #
+            # After shift:
+            #
+            #     $1 = chrony
+            # ------------------------------------------------------------------
+            shift || true
+
+            # ------------------------------------------------------------------
+            # Dispatch to:
+            #
+            #     commands/setup.sh
+            #
+            # "$@"
+            #     forwards all remaining arguments, such as:
+            #
+            #     chrony
+            # ------------------------------------------------------------------
+            run_command "setup" "$@"
+
+            ;;
 
         # ======================================================================
         # UNKNOWN COMMAND

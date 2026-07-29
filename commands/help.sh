@@ -56,13 +56,14 @@ set -Eeuo pipefail
 # The dispatcher in lib/common.sh expects every command implementation to
 # provide a function with this exact name.
 #
-# Later:
+# Current command implementations include:
 #
+#     commands/help.sh
 #     commands/version.sh
 #     commands/health.sh
-#     commands/docker.sh
+#     commands/setup.sh
 #
-# will also implement:
+# Each implements:
 #
 #     command_main()
 #
@@ -87,17 +88,8 @@ command_main() {
     #
     # is sent to `cat`, which prints it to the terminal.
     #
-    # The quotes around 'HELP' are important.
-    #
-    # They prevent Bash from expanding variables or special characters inside
-    # the text.
-    #
-    # Example:
-    #
-    #     $HOME
-    #
-    # would be printed literally instead of being replaced with the user's
-    # home directory.
+    # The quotes around 'HELP' prevent Bash from expanding variables or special
+    # characters inside the help text.
     # --------------------------------------------------------------------------
     cat <<'HELP'
 Stoleus Tools
@@ -108,6 +100,11 @@ Usage:
 Available commands:
     help        Show this help message
     version     Show the installed Stoleus Tools version
+    health      Check server health
+    setup       Install and configure server components
+
+Setup components:
+    chrony      Install, enable, start, and verify Chrony
 
 Aliases:
     -h, --help
@@ -116,5 +113,8 @@ Aliases:
 Examples:
     stoleus help
     stoleus version
+    sudo stoleus health
+    stoleus setup help
+    sudo stoleus setup chrony
 HELP
 }

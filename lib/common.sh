@@ -36,7 +36,7 @@
 #     Treat undefined variables as errors.
 #
 # -o pipefail
-#     Make a pipeline fail if any important command inside it fails.
+#     Make a pipeline fail if any command inside it fails.
 # ------------------------------------------------------------------------------
 set -Eeuo pipefail
 
@@ -45,11 +45,11 @@ set -Eeuo pipefail
 # Shared Path Constants
 # ==============================================================================
 #
-# PROJECT_ROOT is defined by bin/stoleus BEFORE this file is sourced.
+# PROJECT_ROOT is defined by bin/stoleus before this file is sourced.
 #
 # Example:
 #
-#     PROJECT_ROOT=/c/Users/ivans/Desktop/Projects/TOOLS/tools
+#     PROJECT_ROOT=/home/ivan/tools
 #
 # We use readonly because these paths should not change during execution.
 # ==============================================================================
@@ -60,7 +60,7 @@ set -Eeuo pipefail
 #
 # Example:
 #
-#     /c/Users/ivans/Desktop/Projects/TOOLS/tools/commands
+#     /home/ivan/tools/commands
 # ------------------------------------------------------------------------------
 readonly STOLEUS_COMMANDS_DIR="${PROJECT_ROOT}/commands"
 
@@ -70,9 +70,107 @@ readonly STOLEUS_COMMANDS_DIR="${PROJECT_ROOT}/commands"
 #
 # Example:
 #
-#     /c/Users/ivans/Desktop/Projects/TOOLS/tools/VERSION
+#     /home/ivan/tools/VERSION
 # ------------------------------------------------------------------------------
 readonly STOLEUS_VERSION_FILE="${PROJECT_ROOT}/VERSION"
+
+
+# ==============================================================================
+# Console Output Helpers
+# ==============================================================================
+#
+# These functions provide consistent console output across all Stoleus commands.
+#
+# Usage:
+#
+#     log_info "Installing Chrony..."
+#     log_success "Chrony is running."
+#     log_warning "Chrony is not synchronized yet."
+#     log_error "Chrony installation failed."
+#
+# Informational, success, and warning messages are written to stdout.
+#
+# Error messages are written to stderr.
+# ==============================================================================
+
+
+# ==============================================================================
+# log_info
+# ==============================================================================
+#
+# Purpose:
+#     Print an informational message.
+#
+# Usage:
+#
+#     log_info "Installing Chrony..."
+# ==============================================================================
+log_info() {
+
+    local message="${1:-}"
+
+    printf 'INFO: %s\n' "$message"
+}
+
+
+# ==============================================================================
+# log_success
+# ==============================================================================
+#
+# Purpose:
+#     Print a successful-operation message.
+#
+# Usage:
+#
+#     log_success "Chrony is running."
+# ==============================================================================
+log_success() {
+
+    local message="${1:-}"
+
+    printf 'SUCCESS: %s\n' "$message"
+}
+
+
+# ==============================================================================
+# log_warning
+# ==============================================================================
+#
+# Purpose:
+#     Print a warning message.
+#
+# Usage:
+#
+#     log_warning "Chrony is running but not synchronized yet."
+# ==============================================================================
+log_warning() {
+
+    local message="${1:-}"
+
+    printf 'WARNING: %s\n' "$message"
+}
+
+
+# ==============================================================================
+# log_error
+# ==============================================================================
+#
+# Purpose:
+#     Print an error message to stderr.
+#
+# Usage:
+#
+#     log_error "Chrony installation failed."
+#
+# >&2
+#     Redirects the output from stdout to stderr.
+# ==============================================================================
+log_error() {
+
+    local message="${1:-}"
+
+    printf 'ERROR: %s\n' "$message" >&2
+}
 
 
 # ==============================================================================
@@ -80,21 +178,20 @@ readonly STOLEUS_VERSION_FILE="${PROJECT_ROOT}/VERSION"
 # ==============================================================================
 #
 # Purpose:
-#     Print an error message to STDERR.
+#     Maintain compatibility with existing Stoleus code that already calls:
 #
-# Usage:
+#         print_error "message"
 #
-#     print_error "Docker is not installed"
+# New code should normally use:
+#
+#     log_error "message"
 #
 # "$*"
-#     Represents all arguments passed to this function combined as one string.
-#
-# >&2
-#     Redirects the output from stdout to stderr.
+#     Combines all arguments passed to the function into one string.
 # ==============================================================================
 print_error() {
 
-    echo "ERROR: $*" >&2
+    log_error "$*"
 }
 
 
@@ -200,11 +297,11 @@ run_command() {
     #
     # means:
     #
-    #     If the command file does NOT exist.
+    #     If the command file does not exist.
     # --------------------------------------------------------------------------
     if [[ ! -f "$command_file" ]]; then
 
-        print_error "Command implementation not found: $command_name"
+        log_error "Command implementation not found: $command_name"
 
         return 1
     fi
@@ -214,7 +311,7 @@ run_command() {
     # Load the command implementation into the current Bash process.
     #
     # source
-    #     Reads another Bash file and executes it in the CURRENT shell.
+    #     Reads another Bash file and executes it in the current shell.
     #
     # After this line runs, functions inside that command file become available.
     #
@@ -223,6 +320,24 @@ run_command() {
     #     command_main()
     # --------------------------------------------------------------------------
     source "$command_file"
+
+
+    # --------------------------------------------------------------------------
+    # Verify that the command file exposed command_main().
+    #
+    # declare -F
+    #     Checks whether a function with the specified name exists.
+    #
+    # This gives us a clear error instead of:
+    #
+    #     command_main: command not found
+    # --------------------------------------------------------------------------
+    if ! declare -F command_main >/dev/null 2>&1; then
+
+        log_error "Command does not define command_main(): $command_name"
+
+        return 1
+    fi
 
 
     # --------------------------------------------------------------------------
@@ -270,11 +385,19 @@ read_version() {
     # --------------------------------------------------------------------------
     if [[ ! -r "$STOLEUS_VERSION_FILE" ]]; then
 
+        log_error "Version file is missing or unreadable: $STOLEUS_VERSION_FILE"
 
         return 1
     fi
 
 
+    # --------------------------------------------------------------------------
+    # Read the VERSION file.
+    #
+    # <
+    #     Redirects the file into the standard input of tr.
+    #
+    # tr -d '[:space:]'
     #     Removes whitespace characters such as spaces, tabs, and newlines.
     #
     # Example:
@@ -290,11 +413,4 @@ read_version() {
     #     0.1.0
     # --------------------------------------------------------------------------
     tr -d '[:space:]' < "$STOLEUS_VERSION_FILE"
-}    # --------------------------------------------------------------------------
-    # Read the VERSION file.
-    #
-    # <
-    #     Redirects the file into the standard input of `tr`.
-    #
-    # tr -d '[:space:]'
-
+}
