@@ -56,17 +56,28 @@ source "${PROJECT_ROOT}/lib/setup.sh"
 # ==============================================================================
 print_setup_help() {
 
-    cat <<'HELP'
+cat <<'HELP'
 Stoleus Setup
 
 Usage:
     stoleus setup <component>
+    stoleus setup server <profile>
 
 Available components:
     chrony      Install, enable, start, and verify Chrony
+    firewall    Install and configure the UFW firewall
+    server      Configure a complete server profile
+
+Available server profiles:
+    app         Application-server baseline
+    stage       Staging-server baseline
+    storage     Reserved; not implemented yet
 
 Examples:
     sudo stoleus setup chrony
+    sudo stoleus setup firewall
+    sudo stoleus setup server app
+    sudo stoleus setup server stage
 HELP
 }
 
@@ -121,7 +132,7 @@ command_main() {
     #
     # This is similar to a C# switch statement.
     # --------------------------------------------------------------------------
-    case "$component" in
+        case "$component" in
 
         # ----------------------------------------------------------------------
         # Install/configure Chrony.
@@ -133,6 +144,45 @@ command_main() {
             ;;
 
 
+        # ----------------------------------------------------------------------
+        # Install/configure the UFW firewall.
+        # ----------------------------------------------------------------------
+        firewall)
+
+            setup_firewall
+
+            ;;
+
+        # ----------------------------------------------------------------------
+        # Configure a complete server profile.
+        #
+        # Examples:
+        #
+        #     stoleus setup server app
+        #     stoleus setup server stage
+        #
+        # `${2:-}`
+        #     The second argument contains the profile name.
+        # ----------------------------------------------------------------------
+        server)
+
+            local profile="${2:-}"
+
+            if [[ -z "$profile" ]]; then
+
+                log_error "A server profile must be specified."
+                echo
+
+                print_setup_help
+
+                return 2
+            fi
+
+            setup_server_profile "$profile"
+
+            ;;
+			
+			
         # ----------------------------------------------------------------------
         # Help aliases.
         # ----------------------------------------------------------------------
@@ -148,7 +198,7 @@ command_main() {
         # ----------------------------------------------------------------------
         *)
 
-            echo "ERROR: Unknown setup component: $component" >&2
+            log_error "Unknown setup component: $component"
             echo
 
             print_setup_help

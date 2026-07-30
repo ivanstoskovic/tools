@@ -104,7 +104,10 @@ Available commands:
     setup       Install and configure server components
 
 Setup components:
+    Setup components:
     chrony      Install, enable, start, and verify Chrony
+    firewall    Install and configure the UFW firewall
+    server      Configure a complete server profile
 
 Aliases:
     -h, --help
@@ -116,5 +119,8 @@ Examples:
     sudo stoleus health
     stoleus setup help
     sudo stoleus setup chrony
+    sudo stoleus setup firewall
+    sudo stoleus setup server app
+    sudo stoleus setup server stage
 HELP
 }
