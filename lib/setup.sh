@@ -721,27 +721,28 @@ verify_firewall_configuration() {
 #     5. Allow HTTPS.
 #     6. Enable UFW.
 #     7. Verify the configuration.
-#
-# SSH is allowed before UFW is enabled to reduce the risk of locking the
-# administrator out of the server.
 # ==============================================================================
 setup_firewall() {
 
-    require_root
+    require_root || return 1
 
     log_info "Starting firewall setup."
 
-    ensure_package_installed "ufw"
+    ensure_package_installed "ufw" || return 1
 
-    ensure_ufw_defaults
+    ensure_ufw_defaults || return 1
 
-    ensure_ufw_rule "OpenSSH"
-    ensure_ufw_rule "80/tcp"
-    ensure_ufw_rule "443/tcp"
+    # --------------------------------------------------------------------------
+    # SSH must be allowed before UFW is enabled.
+    # --------------------------------------------------------------------------
+    ensure_ufw_rule "OpenSSH" || return 1
 
-    ensure_ufw_enabled
+    ensure_ufw_rule "80/tcp" || return 1
+    ensure_ufw_rule "443/tcp" || return 1
 
-    verify_firewall_configuration
+    ensure_ufw_enabled || return 1
+
+    verify_firewall_configuration || return 1
 
     log_success "Firewall setup completed successfully."
 }
@@ -757,24 +758,230 @@ setup_firewall() {
 #         - enabled at boot
 #         - currently running
 #         - synchronized
-#
-# This function now contains only Chrony-specific orchestration.
-#
-# Generic package and service logic is delegated to reusable helpers.
 # ==============================================================================
 setup_chrony() {
 
-    require_root
+    require_root || return 1
 
     log_info "Starting Chrony setup."
 
-    ensure_package_installed "chrony"
+    ensure_package_installed "chrony" || return 1
 
-    ensure_service_enabled_and_running "chrony.service"
+    ensure_service_enabled_and_running "chrony.service" || return 1
 
-    verify_chrony_synchronization
+    verify_chrony_synchronization || return 1
 
     log_success "Chrony setup completed successfully."
+}
+
+# ==============================================================================
+# Server profile execution state
+# ==============================================================================
+#
+# These variables track the execution of the currently running server profile.
+#
+# They are reset by:
+#
+#     begin_server_profile
+#
+# before each profile starts.
+# ==============================================================================
+PROFILE_NAME=""
+PROFILE_TOTAL_STEPS=0
+PROFILE_CURRENT_STEP=0
+PROFILE_COMPLETED_STEPS=0
+PROFILE_FAILED_STEP=""
+
+
+# ==============================================================================
+# begin_server_profile
+# ==============================================================================
+#
+# Purpose:
+#     Initialize execution state for a server profile.
+#
+# Usage:
+#
+#     begin_server_profile "Application server" 2
+#
+# Arguments:
+#
+#     $1 - Human-readable profile name
+#     $2 - Total number of steps in the profile
+# ==============================================================================
+begin_server_profile() {
+
+    local profile_name="${1:-}"
+    local total_steps="${2:-0}"
+
+
+    if [[ -z "$profile_name" ]]; then
+
+        log_error "begin_server_profile was called without a profile name."
+
+        return 1
+    fi
+
+
+    if [[ ! "$total_steps" =~ ^[1-9][0-9]*$ ]]; then
+
+        log_error "The profile step count must be a positive integer."
+
+        return 1
+    fi
+
+
+    PROFILE_NAME="$profile_name"
+    PROFILE_TOTAL_STEPS="$total_steps"
+    PROFILE_CURRENT_STEP=0
+    PROFILE_COMPLETED_STEPS=0
+    PROFILE_FAILED_STEP=""
+
+    echo
+    log_info "Starting profile: $PROFILE_NAME"
+    log_info "Total steps: $PROFILE_TOTAL_STEPS"
+}
+
+
+# ==============================================================================
+# run_profile_step
+# ==============================================================================
+#
+# Purpose:
+#     Execute one function as a profile step.
+#
+# Usage:
+#
+#     run_profile_step "Chrony" setup_chrony
+#     run_profile_step "Firewall" setup_firewall
+#
+# Arguments:
+#
+#     $1 - Human-readable step name
+#     $2 - Function to execute
+#     $3... - Optional arguments passed to the function
+#
+# Return codes:
+#
+#     0 - Step completed successfully
+#     1 - Step failed
+#     2 - Invalid arguments
+# ==============================================================================
+run_profile_step() {
+
+    local step_name="${1:-}"
+    local step_function="${2:-}"
+
+
+    if [[ -z "$step_name" ]]; then
+
+        log_error "run_profile_step was called without a step name."
+
+        return 2
+    fi
+
+
+    if [[ -z "$step_function" ]]; then
+
+        log_error "No function was provided for profile step: $step_name"
+
+        return 2
+    fi
+
+
+    if ! declare -F "$step_function" >/dev/null 2>&1; then
+
+        log_error "Profile step function does not exist: $step_function"
+
+        return 2
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Remove the step name and function name from the argument list.
+    #
+    # Any remaining arguments are passed to the step function.
+    # --------------------------------------------------------------------------
+    shift 2
+
+
+    PROFILE_CURRENT_STEP=$((PROFILE_CURRENT_STEP + 1))
+
+    echo
+    printf '[%d/%d] %s\n' \
+        "$PROFILE_CURRENT_STEP" \
+        "$PROFILE_TOTAL_STEPS" \
+        "$step_name"
+
+
+    if "$step_function" "$@"; then
+
+        PROFILE_COMPLETED_STEPS=$((PROFILE_COMPLETED_STEPS + 1))
+
+        log_success "Profile step completed: $step_name"
+
+        return 0
+    fi
+
+
+    PROFILE_FAILED_STEP="$step_name"
+
+    log_error "Profile step failed: $step_name"
+
+    return 1
+}
+
+
+# ==============================================================================
+# complete_server_profile
+# ==============================================================================
+#
+# Purpose:
+#     Verify and report successful profile completion.
+# ==============================================================================
+complete_server_profile() {
+
+    echo
+
+
+    if [[ "$PROFILE_COMPLETED_STEPS" -ne "$PROFILE_TOTAL_STEPS" ]]; then
+
+        log_error "Profile did not complete all expected steps."
+        log_error \
+            "Completed ${PROFILE_COMPLETED_STEPS}/${PROFILE_TOTAL_STEPS} steps."
+
+        return 1
+    fi
+
+
+    log_success \
+    "${PROFILE_NAME} profile completed successfully: ${PROFILE_COMPLETED_STEPS}/${PROFILE_TOTAL_STEPS} steps."
+}
+
+
+# ==============================================================================
+# fail_server_profile
+# ==============================================================================
+#
+# Purpose:
+#     Print a consistent failure summary for the current profile.
+# ==============================================================================
+fail_server_profile() {
+
+    echo
+
+    log_error "$PROFILE_NAME profile failed."
+    log_error \
+        "Completed ${PROFILE_COMPLETED_STEPS}/${PROFILE_TOTAL_STEPS} steps."
+
+
+    if [[ -n "$PROFILE_FAILED_STEP" ]]; then
+
+        log_error "Failed step: $PROFILE_FAILED_STEP"
+    fi
+
+
+    return 1
 }
 
 # ==============================================================================
@@ -784,27 +991,35 @@ setup_chrony() {
 # Purpose:
 #     Configure the common baseline for an application server.
 #
-# Current application-server baseline:
+# Current steps:
 #
-#     - Chrony installed and synchronized
-#     - UFW installed and active
-#     - SSH allowed
-#     - HTTP allowed
-#     - HTTPS allowed
-#
-# Additional components such as Docker and deployment directories will be
-# added to this profile later.
+#     1. Chrony
+#     2. Firewall
 # ==============================================================================
 setup_app_server() {
 
-    require_root
+    require_root || return 1
 
-    log_info "Starting application-server setup."
+    begin_server_profile "Application server" 2 || return 1
 
-    setup_chrony
-    setup_firewall
 
-    log_success "Application-server setup completed successfully."
+    if ! run_profile_step "Chrony" setup_chrony; then
+
+        fail_server_profile
+
+        return 1
+    fi
+
+
+    if ! run_profile_step "Firewall" setup_firewall; then
+
+        fail_server_profile
+
+        return 1
+    fi
+
+
+    complete_server_profile
 }
 
 
@@ -813,24 +1028,35 @@ setup_app_server() {
 # ==============================================================================
 #
 # Purpose:
-#     Configure the staging server.
+#     Configure the staging-server baseline.
 #
-# The staging environment should remain similar to production. For now, it uses
-# the same baseline as the application-server profile.
-#
-# Keeping this as a separate function allows staging-specific configuration to
-# be added later without changing the application-server profile.
+# The staging server currently uses the same components as the application
+# server, but remains a separate profile for future staging-specific settings.
 # ==============================================================================
 setup_stage_server() {
 
-    require_root
+    require_root || return 1
 
-    log_info "Starting staging-server setup."
+    begin_server_profile "Staging server" 2 || return 1
 
-    setup_chrony
-    setup_firewall
 
-    log_success "Staging-server setup completed successfully."
+    if ! run_profile_step "Chrony" setup_chrony; then
+
+        fail_server_profile
+
+        return 1
+    fi
+
+
+    if ! run_profile_step "Firewall" setup_firewall; then
+
+        fail_server_profile
+
+        return 1
+    fi
+
+
+    complete_server_profile
 }
 
 
