@@ -66,6 +66,7 @@ Usage:
 Available components:
     chrony      Install, enable, start, and verify Chrony
     firewall    Install and configure the UFW firewall
+    docker      Install Docker Engine, Buildx, and Docker Compose
     server      Configure a complete server profile
 
 Available server profiles:
@@ -76,6 +77,7 @@ Available server profiles:
 Examples:
     sudo stoleus setup chrony
     sudo stoleus setup firewall
+	sudo stoleus setup docker
     sudo stoleus setup server app
     sudo stoleus setup server stage
 HELP
@@ -150,6 +152,15 @@ command_main() {
         firewall)
 
             setup_firewall
+
+            ;;
+			
+		# ----------------------------------------------------------------------
+        # Install and configure Docker Engine, Buildx, and Docker Compose.
+        # ----------------------------------------------------------------------
+        docker)
+
+            setup_docker
 
             ;;
 
