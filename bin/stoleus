@@ -172,6 +172,22 @@ readonly PROJECT_ROOT="$(
 source "${PROJECT_ROOT}/lib/common.sh"
 
 
+# ------------------------------------------------------------------------------
+# Load the generic pipeline execution engine.
+#
+# The pipeline library is used by workflows that execute named steps in order,
+# including:
+#
+#     - server setup
+#     - deployments
+#     - backups
+#     - restores
+#     - repair operations
+#
+# Loading it here makes pipeline functions available to every Stoleus command.
+# ------------------------------------------------------------------------------
+source "${PROJECT_ROOT}/lib/pipeline.sh"
+
 # ==============================================================================
 # main
 # ==============================================================================

@@ -104,7 +104,6 @@ Available commands:
     setup       Install and configure server components
 
 Setup components:
-    Setup components:
     chrony      Install, enable, start, and verify Chrony
     firewall    Install and configure the UFW firewall
     server      Configure a complete server profile
