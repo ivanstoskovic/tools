@@ -432,58 +432,200 @@ ensure_service_enabled_and_running() {
 # ==============================================================================
 #
 # Purpose:
-#     Wait for Chrony to report normal synchronization.
+#     Verify that Chrony has a valid synchronization source and that the local
+#     system clock is actually close to synchronized time.
 #
-# Chrony can require several seconds after installation or startup before it
-# obtains a valid time sample.
+# Why checking only "Leap status: Normal" is insufficient:
 #
-# The function performs:
+#     Chrony can report:
 #
-#     10 attempts
-#     3 seconds between attempts
+#         Leap status : Normal
 #
-# Maximum wait:
+#     while still gradually correcting a very large clock difference.
 #
-#     approximately 30 seconds
+# We therefore verify both:
+#
+#     1. Leap status is Normal.
+#     2. System time offset is no greater than one second.
+#
+# If the remaining offset is larger than one second, we run:
+#
+#     chronyc makestep
+#
+# This immediately applies the outstanding clock correction rather than waiting
+# for Chrony to adjust it gradually.
 # ==============================================================================
 verify_chrony_synchronization() {
 
     local maximum_attempts=10
     local current_attempt=1
+    local maximum_offset_seconds="1.0"
+
+    local tracking_output
+    local leap_status
+    local system_time_offset
+    local absolute_offset
 
 
-    require_command "chronyc"
-    require_command "grep"
+    require_root || return 1
+    require_command "chronyc" || return 1
+    require_command "awk" || return 1
 
 
     log_info "Waiting for Chrony synchronization..."
 
 
-    while [[ "$current_attempt" -le "$maximum_attempts" ]]; do
+    while (( current_attempt <= maximum_attempts )); do
 
-        if chronyc tracking 2>/dev/null |
-            grep -qE 'Leap status[[:space:]]*:[[:space:]]*Normal'; then
+        # ----------------------------------------------------------------------
+        # Read the complete Chrony tracking report once per attempt.
+        # ----------------------------------------------------------------------
+        if ! tracking_output="$(chronyc tracking 2>&1)"; then
 
-            log_success "Chrony is synchronized."
+            log_warning \
+                "Unable to read Chrony tracking information on attempt ${current_attempt}/${maximum_attempts}."
 
-            return 0
+        else
+
+            # ------------------------------------------------------------------
+            # Extract the Leap status.
+            #
+            # Example:
+            #
+            #     Leap status     : Normal
+            #
+            # Output:
+            #
+            #     Normal
+            # ------------------------------------------------------------------
+            leap_status="$(
+                awk -F ':' '
+                    /^Leap status/ {
+                        value = $2
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                        print value
+                        exit
+                    }
+                ' <<< "$tracking_output"
+            )"
+
+
+            # ------------------------------------------------------------------
+            # Extract the signed System time offset.
+            #
+            # Examples:
+            #
+            #     System time : 5.200000000 seconds slow of NTP time
+            #         -> -5.200000000
+            #
+            #     System time : 0.300000000 seconds fast of NTP time
+            #         -> 0.300000000
+            #
+            # The sign is not important for the threshold, but preserving it
+            # makes diagnostic output accurate.
+            # ------------------------------------------------------------------
+            system_time_offset="$(
+                awk '
+                    /^System time/ {
+                        offset = $4
+
+                        if ($6 == "slow") {
+                            offset = -offset
+                        }
+
+                        print offset
+                        exit
+                    }
+                ' <<< "$tracking_output"
+            )"
+
+
+            # ------------------------------------------------------------------
+            # Validate that the extracted offset is numeric.
+            # ------------------------------------------------------------------
+            if [[ "$system_time_offset" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+
+                # --------------------------------------------------------------
+                # Convert the signed offset to an absolute value.
+                # --------------------------------------------------------------
+                absolute_offset="$(
+                    awk -v value="$system_time_offset" '
+                        BEGIN {
+                            if (value < 0) {
+                                value = -value
+                            }
+
+                            printf "%.9f", value
+                        }
+                    '
+                )"
+
+
+                # --------------------------------------------------------------
+                # The server is healthy only when:
+                #
+                #     Leap status = Normal
+                #     absolute offset <= 1 second
+                # --------------------------------------------------------------
+                if [[ "$leap_status" == "Normal" ]] &&
+                   awk \
+                       -v offset="$absolute_offset" \
+                       -v maximum="$maximum_offset_seconds" \
+                       'BEGIN { exit !(offset <= maximum) }'; then
+
+                    log_success \
+                        "Chrony is synchronized; system-time offset is ${absolute_offset} seconds."
+
+                    return 0
+                fi
+
+
+                # --------------------------------------------------------------
+                # Chrony has a valid source, but the local clock is still far
+                # away from synchronized time.
+                #
+                # Apply the outstanding correction immediately.
+                # --------------------------------------------------------------
+                if [[ "$leap_status" == "Normal" ]] &&
+                   awk \
+                       -v offset="$absolute_offset" \
+                       -v maximum="$maximum_offset_seconds" \
+                       'BEGIN { exit !(offset > maximum) }'; then
+
+                    log_warning \
+                        "System-time offset is ${absolute_offset} seconds; applying an immediate Chrony step."
+
+
+                    if ! chronyc makestep; then
+
+                        log_error "Chrony failed to apply the clock correction."
+
+                        return 1
+                    fi
+                fi
+            else
+
+                log_warning \
+                    "Chrony did not return a readable system-time offset."
+            fi
         fi
 
 
-        if [[ "$current_attempt" -lt "$maximum_attempts" ]]; then
+        if (( current_attempt < maximum_attempts )); then
 
             log_info \
-                "Chrony synchronization attempt ${current_attempt}/${maximum_attempts}."
+                "Chrony verification attempt ${current_attempt}/${maximum_attempts} was not yet successful."
 
             sleep 3
         fi
 
 
-        ((current_attempt += 1))
+        current_attempt=$((current_attempt + 1))
     done
 
 
-    log_error "Chrony is running but synchronization was not confirmed."
+    log_error \
+        "Chrony synchronization was not confirmed within the allowed time."
 
     return 1
 }
@@ -886,6 +1028,95 @@ ensure_apt_keyring_directory() {
 
 
 # ==============================================================================
+# remove_legacy_docker_repository
+# ==============================================================================
+#
+# Purpose:
+#     Prevent Docker's official APT repository from being configured twice.
+#
+# Older installations may use:
+#
+#     /etc/apt/sources.list.d/docker.list
+#
+# The current Stoleus configuration uses:
+#
+#     /etc/apt/sources.list.d/docker.sources
+#
+# If both files point to Docker's official Ubuntu repository, APT prints:
+#
+#     Target Packages ... is configured multiple times
+#
+# Safety:
+#     We remove docker.list only when it clearly references Docker's official
+#     Ubuntu repository.
+#
+#     If the file exists but contains another repository, Stoleus stops instead
+#     of deleting an unknown administrator-managed configuration.
+# ==============================================================================
+remove_legacy_docker_repository() {
+
+    local legacy_repository_file="/etc/apt/sources.list.d/docker.list"
+    local official_repository_url="https://download.docker.com/linux/ubuntu"
+
+
+    require_root || return 1
+
+
+    if [[ ! -e "$legacy_repository_file" ]]; then
+
+        return 0
+    fi
+
+
+    if [[ ! -f "$legacy_repository_file" ]]; then
+
+        log_error \
+            "Legacy Docker repository path exists but is not a normal file: $legacy_repository_file"
+
+        return 1
+    fi
+
+
+    if grep -Fq \
+        "$official_repository_url" \
+        "$legacy_repository_file"; then
+
+        log_info \
+            "Removing legacy Docker repository definition: $legacy_repository_file"
+
+
+        if ! rm -f "$legacy_repository_file"; then
+
+            log_error \
+                "Failed to remove the legacy Docker repository definition."
+
+            return 1
+        fi
+
+
+        # ----------------------------------------------------------------------
+        # The APT source configuration changed.
+        # ----------------------------------------------------------------------
+        APT_METADATA_UPDATED=0
+
+        log_success \
+            "Legacy Docker repository definition removed."
+
+        return 0
+    fi
+
+
+    log_error \
+        "The legacy Docker repository file contains an unrecognized configuration: $legacy_repository_file"
+
+    log_error \
+        "Stoleus will not remove it automatically."
+
+    return 1
+}
+
+
+# ==============================================================================
 # configure_docker_repository
 # ==============================================================================
 #
@@ -928,7 +1159,8 @@ configure_docker_repository() {
     require_command "cmp" || return 1
 
     ensure_apt_keyring_directory || return 1
-
+	
+	remove_legacy_docker_repository || return 1
 
     # --------------------------------------------------------------------------
     # Determine the package architecture.
