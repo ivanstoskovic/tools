@@ -1,1 +1,282 @@
-Explanation
+# Stoleus
+
+> A modular infrastructure automation toolkit for Linux.
+
+Stoleus is a lightweight, dependency-free automation framework written in Bash for provisioning, configuring, verifying, and maintaining Linux servers.
+
+The project focuses on **repeatable**, **idempotent**, and **production-oriented** infrastructure automation while remaining easy to understand, extend, and maintain.
+
+---
+
+# Why Stoleus?
+
+Modern infrastructure tools such as Ansible, Terraform, and Puppet are extremely powerful, but they can also introduce complexity that isn't always necessary for small and medium self-hosted environments.
+
+Stoleus provides an alternative approach:
+
+- Simple
+- Transparent
+- Modular
+- Predictable
+- Easy to debug
+- Easy to extend
+
+Every operation performed by Stoleus can be inspected directly in the source code.
+
+---
+
+# Current Features
+
+## Commands
+
+```text
+stoleus help
+stoleus version
+stoleus health
+stoleus setup
+```
+
+## Setup Components
+
+- Chrony
+- Firewall (UFW)
+- Docker Engine
+- Docker Compose
+- Docker Buildx
+- Application Directories
+
+## Server Profiles
+
+- Application Server
+- Staging Server
+
+---
+
+# Project Architecture
+
+```
+                User
+                  │
+                  ▼
+           bin/stoleus
+                  │
+                  ▼
+            CLI Commands
+                  │
+                  ▼
+          Pipeline Engine
+                  │
+      ┌───────────┼───────────┐
+      ▼           ▼           ▼
+   Chrony     Firewall     Docker
+                  │
+                  ▼
+            Linux Services
+                  │
+                  ▼
+             Linux Kernel
+```
+
+---
+
+# Repository Structure
+
+```text
+bin/
+    CLI entry point
+
+commands/
+    Command routing
+
+lib/
+    Shared libraries
+
+lib/setup/
+    Infrastructure components
+
+docs/
+    Project documentation
+
+.github/
+    GitHub workflows and templates
+```
+
+---
+
+# Design Principles
+
+Stoleus is built around several core engineering principles.
+
+## Idempotency
+
+Running the same command multiple times should always produce the same result.
+
+---
+
+## Fail Fast
+
+Errors should be detected immediately and stop execution before the system enters an inconsistent state.
+
+---
+
+## Modular Design
+
+Each infrastructure component lives in its own module.
+
+Example:
+
+```text
+chrony.sh
+firewall.sh
+docker.sh
+directories.sh
+```
+
+---
+
+## Separation of Concerns
+
+```
+CLI
+
+↓
+
+Command Routing
+
+↓
+
+Libraries
+
+↓
+
+Infrastructure Components
+```
+
+Every layer has a single responsibility.
+
+---
+
+## Verification First
+
+Configuration is never considered complete until it has been verified.
+
+Example:
+
+```
+Install
+
+↓
+
+Configure
+
+↓
+
+Verify
+
+↓
+
+Success
+```
+
+---
+
+# Development Workflow
+
+Every feature follows the same engineering process.
+
+```
+Architecture
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Staging
+
+↓
+
+Documentation
+
+↓
+
+Commit
+```
+
+---
+
+# Documentation
+
+Project documentation is located in:
+
+```text
+docs/
+```
+
+Including:
+
+- Architecture
+- Commands
+- Components
+- Development Guide
+- Roadmap
+- Architecture Decisions
+
+---
+
+# Roadmap
+
+## Current
+
+- Pipeline Engine
+- Chrony
+- Firewall
+- Docker
+- Directories
+
+## Next
+
+- GitHub Runner
+- Docker Compose Deployment
+- Application Deployment
+- PostgreSQL
+- Redis
+- Monitoring
+- Backup & Restore
+
+---
+
+# Status
+
+Current Version
+
+```
+v0.2
+```
+
+Development Status
+
+```
+Active Development
+```
+
+---
+
+# Contributing
+
+See:
+
+```
+CONTRIBUTING.md
+```
+
+---
+
+# License
+
+MIT License
