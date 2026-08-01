@@ -85,7 +85,7 @@ Before every commit run:
 bash -n bin/stoleus
 bash -n commands/*.sh
 bash -n lib/*.sh
-bash -n lib/setup/*.sh
+bash -n lib/components/*.sh
 ```
 
 Then test on a staging server.

@@ -91,7 +91,7 @@ commands/
 lib/
     Shared libraries
 
-lib/setup/
+lib/components/
     Infrastructure components
 
 docs/

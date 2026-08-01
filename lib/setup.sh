@@ -30,12 +30,26 @@ set -Eeuo pipefail
 #     sudo stoleus setup chrony
 #
 # ==============================================================================
-source "${PROJECT_ROOT}/lib/setup/common.sh"
-source "${PROJECT_ROOT}/lib/setup/chrony.sh"
-source "${PROJECT_ROOT}/lib/setup/firewall.sh"
-source "${PROJECT_ROOT}/lib/setup/docker.sh"
-source "${PROJECT_ROOT}/lib/setup/directories.sh"
-source "${PROJECT_ROOT}/lib/setup/profiles.sh"
+# ==============================================================================
+# Stoleus Tools - Component Loader
+# ==============================================================================
+#
+# This compatibility loader loads all infrastructure components in dependency
+# order.
+#
+# commands/setup.sh still loads:
+#
+#     lib/setup.sh
+#
+# This allows us to rename the implementation directory without changing the
+# command layer immediately.
+# ==============================================================================
+source "${PROJECT_ROOT}/lib/components/common.sh"
+source "${PROJECT_ROOT}/lib/components/chrony.sh"
+source "${PROJECT_ROOT}/lib/components/firewall.sh"
+source "${PROJECT_ROOT}/lib/components/docker.sh"
+source "${PROJECT_ROOT}/lib/components/directories.sh"
+source "${PROJECT_ROOT}/lib/components/profiles.sh"
 
 
 

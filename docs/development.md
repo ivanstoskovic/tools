@@ -21,7 +21,7 @@ docs/
 1. Create module
 
 ```
-lib/setup/example.sh
+lib/components/example.sh
 ```
 
 2. Load module
