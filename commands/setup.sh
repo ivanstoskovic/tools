@@ -64,10 +64,11 @@ Usage:
     stoleus setup server <profile>
 
 Available components:
-    chrony      Install, enable, start, and verify Chrony
-    firewall    Install and configure the UFW firewall
-    docker      Install Docker Engine, Buildx, and Docker Compose
-    server      Configure a complete server profile
+    chrony       Install, enable, start, and verify Chrony
+    firewall     Install and configure the UFW firewall
+    docker       Install Docker Engine, Buildx, and Docker Compose
+    directories  Create the standard application-server directories
+    server       Configure a complete server profile
 
 Available server profiles:
     app         Application-server baseline
@@ -80,6 +81,7 @@ Examples:
 	sudo stoleus setup docker
     sudo stoleus setup server app
     sudo stoleus setup server stage
+	sudo stoleus setup directories
 HELP
 }
 
@@ -154,6 +156,15 @@ command_main() {
             setup_firewall
 
             ;;
+			
+		# ----------------------------------------------------------------------
+        # Setup directories.
+        # ----------------------------------------------------------------------
+		directories)
+
+			setup_application_directories
+
+			;;
 			
 		# ----------------------------------------------------------------------
         # Install and configure Docker Engine, Buildx, and Docker Compose.
