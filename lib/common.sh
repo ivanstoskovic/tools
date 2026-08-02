@@ -383,6 +383,1218 @@ print_step_failure() {
         "$COLOR_RESET" >&2
 }
 
+# ==============================================================================
+# download_file
+# ==============================================================================
+#
+# Purpose:
+#     Download a file from an HTTPS URL to a specified destination.
+#
+# Usage:
+#
+#     download_file \
+#         "https://example.com/archive.tar.gz" \
+#         "/tmp/archive.tar.gz"
+#
+# Arguments:
+#
+#     $1 = source URL
+#     $2 = destination file path
+#
+# Safety:
+#
+#     - accepts HTTPS URLs only;
+#     - validates required arguments;
+#     - requires the destination directory to exist;
+#     - downloads into a temporary file first;
+#     - moves the temporary file into place only after a successful download;
+#     - removes partial downloads when an error occurs;
+#     - does not suppress curl error messages.
+#
+# Why use a temporary file:
+#
+#     Writing directly to the final destination could leave a partial or corrupt
+#     file if the network connection fails.
+#
+#     The final destination is updated only after curl completes successfully.
+#
+# Return codes:
+#
+#     0 = file downloaded successfully
+#     1 = download or verification failed
+#     2 = invalid arguments
+# ==============================================================================
+download_file() {
+
+    local source_url="${1:-}"
+    local destination_path="${2:-}"
+
+    local destination_directory
+    local temporary_file
+
+
+    log_info "Preparing file download."
+
+
+    # --------------------------------------------------------------------------
+    # Validate required arguments.
+    # --------------------------------------------------------------------------
+    if [[ -z "$source_url" ]]; then
+
+        log_error "download_file was called without a source URL."
+
+        return 2
+    fi
+
+
+    if [[ -z "$destination_path" ]]; then
+
+        log_error "download_file was called without a destination path."
+
+        return 2
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Restrict downloads to encrypted HTTPS connections.
+    # --------------------------------------------------------------------------
+    if [[ "$source_url" != https://* ]]; then
+
+        log_error "Only HTTPS downloads are allowed: $source_url"
+
+        return 2
+    fi
+
+
+    require_command "curl" || return 1
+    require_command "dirname" || return 1
+    require_command "mktemp" || return 1
+    require_command "mv" || return 1
+    require_command "rm" || return 1
+
+
+    # --------------------------------------------------------------------------
+    # Determine and validate the parent directory.
+    #
+    # The helper deliberately does not create directories automatically.
+    # Directory creation belongs to the component or setup operation that owns
+    # the destination.
+    # --------------------------------------------------------------------------
+    destination_directory="$(dirname -- "$destination_path")"
+
+
+    if [[ ! -d "$destination_directory" ]]; then
+
+        log_error \
+            "Download destination directory does not exist: $destination_directory"
+
+        return 1
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Create the temporary file in the same directory as the final destination.
+    #
+    # This allows the final `mv` operation to remain on the same filesystem and
+    # therefore behave atomically.
+    # --------------------------------------------------------------------------
+    if ! temporary_file="$(
+        mktemp "${destination_directory}/.stoleus-download.XXXXXX"
+    )"; then
+
+        log_error "Failed to create a temporary download file."
+
+        return 1
+    fi
+
+
+    log_info "Downloading: $source_url"
+    log_info "Destination: $destination_path"
+
+
+    # --------------------------------------------------------------------------
+    # curl options:
+    #
+    #     --fail
+    #         Treat HTTP 4xx and 5xx responses as failures.
+    #
+    #     --location
+    #         Follow redirects.
+    #
+    #     --show-error
+    #         Display useful errors even when silent mode is enabled.
+    #
+    #     --silent
+    #         Hide the progress meter while preserving error output.
+    #
+    #     --output
+    #         Write the response to the temporary file.
+    # --------------------------------------------------------------------------
+    if ! curl \
+        --fail \
+        --location \
+        --silent \
+        --show-error \
+        --output "$temporary_file" \
+        "$source_url"; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to download file: $source_url"
+
+        return 1
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Reject an empty response before replacing the destination.
+    # --------------------------------------------------------------------------
+    if [[ ! -s "$temporary_file" ]]; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Downloaded file is empty: $source_url"
+
+        return 1
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Move the completed temporary file into its final location.
+    # --------------------------------------------------------------------------
+    if ! mv -f -- "$temporary_file" "$destination_path"; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to move downloaded file to: $destination_path"
+
+        return 1
+    fi
+
+
+    log_success "File downloaded successfully: $destination_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# extract_tar_gz
+# ==============================================================================
+#
+# Purpose:
+#     Extract a gzip-compressed TAR archive into an existing directory.
+#
+# Usage:
+#
+#     extract_tar_gz \
+#         "/tmp/application.tar.gz" \
+#         "/opt/application"
+#
+# Arguments:
+#
+#     $1 = archive path
+#     $2 = destination directory
+#
+# Return codes:
+#
+#     0 = archive extracted successfully
+#     1 = extraction or verification failed
+#     2 = invalid arguments
+# ==============================================================================
+extract_tar_gz() {
+
+    local archive_path="${1:-}"
+    local destination_directory="${2:-}"
+
+
+    log_info "Preparing TAR.GZ archive extraction."
+
+
+    if [[ -z "$archive_path" ]]; then
+
+        log_error "extract_tar_gz was called without an archive path."
+
+        return 2
+    fi
+
+
+    if [[ -z "$destination_directory" ]]; then
+
+        log_error "extract_tar_gz was called without a destination directory."
+
+        return 2
+    fi
+
+
+    require_command "tar" || return 1
+
+
+    if [[ ! -f "$archive_path" ]]; then
+
+        log_error "Archive does not exist: $archive_path"
+
+        return 1
+    fi
+
+
+    if [[ ! -s "$archive_path" ]]; then
+
+        log_error "Archive is empty: $archive_path"
+
+        return 1
+    fi
+
+
+    if [[ ! -d "$destination_directory" ]]; then
+
+        log_error \
+            "Archive destination directory does not exist: $destination_directory"
+
+        return 1
+    fi
+
+
+    log_info "Extracting archive: $archive_path"
+    log_info "Extraction destination: $destination_directory"
+
+
+    if ! tar \
+        --extract \
+        --gzip \
+        --file "$archive_path" \
+        --directory "$destination_directory"; then
+
+        log_error "Failed to extract archive: $archive_path"
+
+        return 1
+    fi
+
+
+    log_success \
+        "Archive extracted successfully: $destination_directory"
+
+    return 0
+}
+
+
+# ==============================================================================
+# verify_sha256
+# ==============================================================================
+#
+# Purpose:
+#     Verify that a file matches an expected SHA-256 checksum.
+#
+# Usage:
+#
+#     verify_sha256 \
+#         "/tmp/application.tar.gz" \
+#         "0123456789abcdef..."
+#
+# Arguments:
+#
+#     $1 = file path
+#     $2 = expected SHA-256 checksum
+#
+# The function supports:
+#
+#     sha256sum
+#
+# and falls back to:
+#
+#     shasum -a 256
+#
+# Return codes:
+#
+#     0 = checksum matches
+#     1 = checksum does not match or could not be calculated
+#     2 = invalid arguments
+# ==============================================================================
+verify_sha256() {
+
+    local file_path="${1:-}"
+    local expected_checksum="${2:-}"
+
+    local actual_checksum
+    local checksum_pattern='^[A-Fa-f0-9]{64}$'
+
+
+    log_info "Verifying SHA-256 checksum."
+
+
+    if [[ -z "$file_path" ]]; then
+
+        log_error "verify_sha256 was called without a file path."
+
+        return 2
+    fi
+
+
+    if [[ -z "$expected_checksum" ]]; then
+
+        log_error "verify_sha256 was called without an expected checksum."
+
+        return 2
+    fi
+
+
+    if [[ ! -f "$file_path" ]]; then
+
+        log_error "Checksum target does not exist: $file_path"
+
+        return 1
+    fi
+
+
+    if [[ ! "$expected_checksum" =~ $checksum_pattern ]]; then
+
+        log_error "Invalid SHA-256 checksum format."
+
+        return 2
+    fi
+
+
+    expected_checksum="${expected_checksum,,}"
+
+
+    if command -v sha256sum >/dev/null 2>&1; then
+
+        actual_checksum="$(
+            sha256sum -- "$file_path" |
+                awk '{print $1}'
+        )"
+
+    elif command -v shasum >/dev/null 2>&1; then
+
+        actual_checksum="$(
+            shasum -a 256 -- "$file_path" |
+                awk '{print $1}'
+        )"
+
+    else
+
+        log_error "Neither sha256sum nor shasum is available."
+
+        return 1
+    fi
+
+
+    actual_checksum="${actual_checksum,,}"
+
+
+    if [[ "$actual_checksum" != "$expected_checksum" ]]; then
+
+        log_error "SHA-256 checksum verification failed."
+        log_error "Expected: $expected_checksum"
+        log_error "Actual:   $actual_checksum"
+
+        return 1
+    fi
+
+
+    log_success "SHA-256 checksum verified successfully."
+
+    return 0
+}
+
+
+# ==============================================================================
+# create_directory
+# ==============================================================================
+#
+# Purpose:
+#     Create or configure a directory.
+#
+# Usage:
+#
+#     create_directory "/opt/application"
+#
+#     create_directory \
+#         "/opt/application" \
+#         "0755" \
+#         "deployer" \
+#         "deployer"
+#
+# Arguments:
+#
+#     $1 = directory path
+#     $2 = permissions; optional, defaults to 0755
+#     $3 = owner; optional
+#     $4 = group; optional
+#
+# Owner and group must either both be provided or both omitted.
+#
+# Return codes:
+#
+#     0 = directory is ready
+#     1 = directory creation or configuration failed
+#     2 = invalid arguments
+# ==============================================================================
+create_directory() {
+
+    local directory_path="${1:-}"
+    local directory_mode="${2:-0755}"
+    local owner_name="${3:-}"
+    local group_name="${4:-}"
+
+    local -a install_arguments=()
+
+
+    log_info "Preparing directory creation."
+
+
+    if [[ -z "$directory_path" ]]; then
+
+        log_error "create_directory was called without a directory path."
+
+        return 2
+    fi
+
+
+    if [[ ! "$directory_mode" =~ ^[0-7]{3,4}$ ]]; then
+
+        log_error "Invalid directory permissions: $directory_mode"
+
+        return 2
+    fi
+
+
+    if {
+        [[ -n "$owner_name" ]] && [[ -z "$group_name" ]]
+    } || {
+        [[ -z "$owner_name" ]] && [[ -n "$group_name" ]]
+    }; then
+
+        log_error "Directory owner and group must be provided together."
+
+        return 2
+    fi
+
+
+    require_command "install" || return 1
+
+
+    install_arguments=(
+        -d
+        -m "$directory_mode"
+    )
+
+
+    if [[ -n "$owner_name" ]]; then
+
+        if ! id -u "$owner_name" >/dev/null 2>&1; then
+
+            log_error "Directory owner does not exist: $owner_name"
+
+            return 1
+        fi
+
+
+        if ! getent group "$group_name" >/dev/null 2>&1; then
+
+            log_error "Directory group does not exist: $group_name"
+
+            return 1
+        fi
+
+
+        install_arguments+=(
+            -o "$owner_name"
+            -g "$group_name"
+        )
+    fi
+
+
+    log_info "Creating or configuring directory: $directory_path"
+
+
+    if ! install "${install_arguments[@]}" "$directory_path"; then
+
+        log_error "Failed to create directory: $directory_path"
+
+        return 1
+    fi
+
+
+    log_success "Directory is ready: $directory_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# remove_directory
+# ==============================================================================
+#
+# Purpose:
+#     Remove a directory and all content inside it.
+#
+# Usage:
+#
+#     remove_directory "/opt/runners/example"
+#
+# Safety:
+#
+#     - requires an absolute path;
+#     - refuses to remove critical top-level Linux directories;
+#     - treats a missing directory as already removed;
+#     - does not follow a symbolic link as a directory tree.
+#
+# Return codes:
+#
+#     0 = directory removed or already absent
+#     1 = removal failed
+#     2 = unsafe or invalid argument
+# ==============================================================================
+remove_directory() {
+
+    local directory_path="${1:-}"
+
+
+    log_info "Preparing directory removal."
+
+
+    if [[ -z "$directory_path" ]]; then
+
+        log_error "remove_directory was called without a directory path."
+
+        return 2
+    fi
+
+
+    if [[ "$directory_path" != /* ]]; then
+
+        log_error "Directory removal requires an absolute path."
+
+        return 2
+    fi
+
+
+    case "$directory_path" in
+
+        /|\
+        /bin|\
+        /boot|\
+        /dev|\
+        /etc|\
+        /home|\
+        /lib|\
+        /lib64|\
+        /opt|\
+        /proc|\
+        /root|\
+        /run|\
+        /sbin|\
+        /srv|\
+        /sys|\
+        /tmp|\
+        /usr|\
+        /var)
+
+            log_error \
+                "Refusing to remove protected system directory: $directory_path"
+
+            return 2
+            ;;
+    esac
+
+
+    require_command "rm" || return 1
+
+
+    if [[ ! -e "$directory_path" ]] &&
+       [[ ! -L "$directory_path" ]]; then
+
+        log_info "Directory is already absent: $directory_path"
+
+        return 0
+    fi
+
+
+    if [[ ! -d "$directory_path" ]] &&
+       [[ ! -L "$directory_path" ]]; then
+
+        log_error "Removal target is not a directory: $directory_path"
+
+        return 1
+    fi
+
+
+    log_info "Removing directory: $directory_path"
+
+
+    if ! rm -rf -- "$directory_path"; then
+
+        log_error "Failed to remove directory: $directory_path"
+
+        return 1
+    fi
+
+
+    if [[ -e "$directory_path" ]] ||
+       [[ -L "$directory_path" ]]; then
+
+        log_error "Directory still exists after removal: $directory_path"
+
+        return 1
+    fi
+
+
+    log_success "Directory removed successfully: $directory_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# backup_file
+# ==============================================================================
+#
+# Purpose:
+#     Copy an existing file to a specified backup location.
+#
+# Usage:
+#
+#     backup_file \
+#         "/etc/application/config.conf" \
+#         "/etc/application/config.conf.bak"
+#
+# Arguments:
+#
+#     $1 = source file
+#     $2 = backup file
+#
+# File permissions, ownership, and timestamps are preserved where supported.
+# ==============================================================================
+backup_file() {
+
+    local source_path="${1:-}"
+    local backup_path="${2:-}"
+    local backup_directory
+
+
+    log_info "Preparing file backup."
+
+
+    if [[ -z "$source_path" ]]; then
+
+        log_error "backup_file was called without a source path."
+
+        return 2
+    fi
+
+
+    if [[ -z "$backup_path" ]]; then
+
+        log_error "backup_file was called without a backup path."
+
+        return 2
+    fi
+
+
+    require_command "cp" || return 1
+    require_command "dirname" || return 1
+
+
+    if [[ ! -f "$source_path" ]]; then
+
+        log_error "Backup source does not exist: $source_path"
+
+        return 1
+    fi
+
+
+    backup_directory="$(dirname -- "$backup_path")"
+
+
+    if [[ ! -d "$backup_directory" ]]; then
+
+        log_error "Backup directory does not exist: $backup_directory"
+
+        return 1
+    fi
+
+
+    log_info "Backing up file: $source_path"
+    log_info "Backup destination: $backup_path"
+
+
+    if ! cp \
+        --archive \
+        --force \
+        -- "$source_path" "$backup_path"; then
+
+        log_error "Failed to back up file: $source_path"
+
+        return 1
+    fi
+
+
+    if [[ ! -f "$backup_path" ]]; then
+
+        log_error "Backup file could not be verified: $backup_path"
+
+        return 1
+    fi
+
+
+    log_success "File backed up successfully: $backup_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# restore_file
+# ==============================================================================
+#
+# Purpose:
+#     Restore a file from a previously created backup.
+#
+# Usage:
+#
+#     restore_file \
+#         "/etc/application/config.conf.bak" \
+#         "/etc/application/config.conf"
+#
+# Arguments:
+#
+#     $1 = backup file
+#     $2 = destination file
+# ==============================================================================
+restore_file() {
+
+    local backup_path="${1:-}"
+    local destination_path="${2:-}"
+    local destination_directory
+
+
+    log_info "Preparing file restoration."
+
+
+    if [[ -z "$backup_path" ]]; then
+
+        log_error "restore_file was called without a backup path."
+
+        return 2
+    fi
+
+
+    if [[ -z "$destination_path" ]]; then
+
+        log_error "restore_file was called without a destination path."
+
+        return 2
+    fi
+
+
+    require_command "cp" || return 1
+    require_command "dirname" || return 1
+
+
+    if [[ ! -f "$backup_path" ]]; then
+
+        log_error "Backup file does not exist: $backup_path"
+
+        return 1
+    fi
+
+
+    destination_directory="$(dirname -- "$destination_path")"
+
+
+    if [[ ! -d "$destination_directory" ]]; then
+
+        log_error \
+            "Restore destination directory does not exist: $destination_directory"
+
+        return 1
+    fi
+
+
+    log_info "Restoring backup: $backup_path"
+    log_info "Restore destination: $destination_path"
+
+
+    if ! cp \
+        --archive \
+        --force \
+        -- "$backup_path" "$destination_path"; then
+
+        log_error "Failed to restore file: $destination_path"
+
+        return 1
+    fi
+
+
+    log_success "File restored successfully: $destination_path"
+
+    return 0
+}
+
+# ==============================================================================
+# write_text
+# ==============================================================================
+#
+# Purpose:
+#     Write text to stdout, optionally ensuring exactly one final newline.
+#
+# Arguments:
+#
+#     $1 = text
+#     $2 = ensure final newline: true or false
+# ==============================================================================
+write_text() {
+
+    local text="${1-}"
+    local ensure_newline="${2:-true}"
+
+
+    if [[ "$ensure_newline" != "true" ]] &&
+       [[ "$ensure_newline" != "false" ]]; then
+
+        log_error "ensure_newline must be true or false."
+
+        return 2
+    fi
+
+
+    if [[ "$ensure_newline" == "false" ]]; then
+
+        printf '%s' "$text"
+
+        return 0
+    fi
+
+
+    # Remove all trailing newline characters, then add exactly one.
+    while [[ "$text" == *$'\n' ]]; do
+
+        text="${text%$'\n'}"
+    done
+
+
+    printf '%s\n' "$text"
+}
+
+
+# ==============================================================================
+# write_file
+# ==============================================================================
+#
+# Purpose:
+#     Replace the complete content of a text file safely.
+#
+# Usage:
+#
+#     write_file \
+#         "/etc/application/config.conf" \
+#         "$configuration_content"
+#
+# Arguments:
+#
+#     $1 = destination file
+#     $2 = complete text content
+#
+# The file is written through a temporary file before replacing the destination.
+# ==============================================================================
+write_file() {
+
+    local destination_path="${1:-}"
+    local file_content="${2-}"
+
+    local destination_directory
+    local temporary_file
+
+
+    log_info "Preparing file write."
+
+
+    if [[ -z "$destination_path" ]]; then
+
+        log_error "write_file was called without a destination path."
+
+        return 2
+    fi
+
+
+    require_command "dirname" || return 1
+    require_command "mktemp" || return 1
+    require_command "mv" || return 1
+    require_command "rm" || return 1
+
+
+    destination_directory="$(dirname -- "$destination_path")"
+
+
+    if [[ ! -d "$destination_directory" ]]; then
+
+        log_error \
+            "File destination directory does not exist: $destination_directory"
+
+        return 1
+    fi
+
+
+    if ! temporary_file="$(
+        mktemp "${destination_directory}/.stoleus-write.XXXXXX"
+    )"; then
+
+        log_error "Failed to create a temporary file."
+
+        return 1
+    fi
+
+
+    if ! write_text "$file_content" "$ensure_newline" > "$temporary_file"; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to write temporary file content."
+
+        return 1
+    fi
+
+
+    if ! mv -f -- "$temporary_file" "$destination_path"; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to replace file: $destination_path"
+
+        return 1
+    fi
+
+
+    log_success "File written successfully: $destination_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# append_file
+# ==============================================================================
+#
+# Purpose:
+#     Append text to the end of a file.
+#
+# Usage:
+#
+#     append_file \
+#         "/etc/application/config.conf" \
+#         "$additional_content"
+#
+# The file is created when it does not already exist.
+# ==============================================================================
+append_file() {
+
+    local destination_path="${1:-}"
+    local file_content="${2-}"
+
+    local destination_directory
+
+
+    log_info "Preparing file append."
+
+
+    if [[ -z "$destination_path" ]]; then
+
+        log_error "append_file was called without a destination path."
+
+        return 2
+    fi
+
+
+    require_command "dirname" || return 1
+
+
+    destination_directory="$(dirname -- "$destination_path")"
+
+
+    if [[ ! -d "$destination_directory" ]]; then
+
+        log_error \
+            "File destination directory does not exist: $destination_directory"
+
+        return 1
+    fi
+
+
+    if ! write_text "$file_content" "$ensure_newline" >> "$destination_path"; then
+
+        log_error "Failed to append content to: $destination_path"
+
+        return 1
+    fi
+
+
+    log_success "Content appended successfully: $destination_path"
+
+    return 0
+}
+
+
+# ==============================================================================
+# replace_line
+# ==============================================================================
+#
+# Purpose:
+#     Replace every complete line matching an extended regular expression.
+#
+# Usage:
+#
+#     replace_line \
+#         "/etc/application/config.conf" \
+#         '^Port[[:space:]]*=' \
+#         'Port=8080'
+#
+# Arguments:
+#
+#     $1 = file path
+#     $2 = extended regular-expression pattern
+#     $3 = complete replacement line
+#
+# Behavior:
+#
+#     - matching lines are replaced completely;
+#     - non-matching lines remain unchanged;
+#     - file ownership and permissions are preserved;
+#     - the operation fails when no line matches.
+#
+# Return codes:
+#
+#     0 = one or more lines replaced
+#     1 = replacement failed or no match was found
+#     2 = invalid arguments
+# ==============================================================================
+replace_line() {
+
+    local file_path="${1:-}"
+    local search_pattern="${2:-}"
+    local replacement_line="${3-}"
+
+    local file_directory
+    local temporary_file
+    local awk_exit_code
+
+
+    log_info "Preparing line replacement."
+
+
+    if [[ -z "$file_path" ]]; then
+
+        log_error "replace_line was called without a file path."
+
+        return 2
+    fi
+
+
+    if [[ -z "$search_pattern" ]]; then
+
+        log_error "replace_line was called without a search pattern."
+
+        return 2
+    fi
+
+
+    require_command "awk" || return 1
+    require_command "cat" || return 1
+    require_command "dirname" || return 1
+    require_command "mktemp" || return 1
+    require_command "rm" || return 1
+
+
+    if [[ ! -f "$file_path" ]]; then
+
+        log_error "Line replacement target does not exist: $file_path"
+
+        return 1
+    fi
+
+
+    file_directory="$(dirname -- "$file_path")"
+
+
+    if ! temporary_file="$(
+        mktemp "${file_directory}/.stoleus-replace.XXXXXX"
+    )"; then
+
+        log_error "Failed to create a temporary replacement file."
+
+        return 1
+    fi
+
+
+    if awk \
+        -v pattern="$search_pattern" \
+        -v replacement="$replacement_line" '
+            $0 ~ pattern {
+                print replacement
+                matched = 1
+                next
+            }
+
+            {
+                print
+            }
+
+            END {
+                if (!matched) {
+                    exit 3
+                }
+            }
+        ' "$file_path" > "$temporary_file"; then
+
+        awk_exit_code=0
+
+    else
+
+        awk_exit_code=$?
+    fi
+
+
+    if (( awk_exit_code == 3 )); then
+
+        rm -f -- "$temporary_file"
+
+        log_error "No line matched the requested pattern: $search_pattern"
+
+        return 1
+    fi
+
+
+    if (( awk_exit_code != 0 )); then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to process file: $file_path"
+
+        return 1
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Writing through `cat` preserves the existing file inode, ownership, and
+    # permissions.
+    # --------------------------------------------------------------------------
+    if ! cat "$temporary_file" > "$file_path"; then
+
+        rm -f -- "$temporary_file"
+
+        log_error "Failed to update file: $file_path"
+
+        return 1
+    fi
+
+
+    rm -f -- "$temporary_file"
+
+    log_success "Matching line replaced successfully: $file_path"
+
+    return 0
+}
+
 
 # ==============================================================================
 # run_command

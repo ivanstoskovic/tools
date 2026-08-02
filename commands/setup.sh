@@ -64,11 +64,12 @@ Usage:
     stoleus setup server <profile>
 
 Available components:
-    chrony       Install, enable, start, and verify Chrony
-    firewall     Install and configure the UFW firewall
-    docker       Install Docker Engine, Buildx, and Docker Compose
-    directories  Create the standard application-server directories
-    server       Configure a complete server profile
+    chrony         Install, enable, start, and verify Chrony
+    firewall       Install and configure the UFW firewall
+    docker         Install Docker Engine, Buildx, and Docker Compose
+    directories    Create the standard application-server directories
+	github-runner  Install and register a GitHub Actions self-hosted runner
+    server         Configure a complete server profile
 
 Available server profiles:
     app         Application-server baseline
@@ -85,6 +86,93 @@ Examples:
 HELP
 }
 
+
+parse_github_runner_options() {
+
+    GITHUB_RUNNER_URL=""
+    GITHUB_RUNNER_SHORT_NAME=""
+    GITHUB_RUNNER_LABELS="self-hosted,linux"
+    GITHUB_RUNNER_USER="deployer"
+	
+	# Default GitHub Runner version.
+    #
+    # This version may be overridden with:
+    #
+    #     --version <version>
+    #
+    GITHUB_RUNNER_VERSION="2.334.0"
+
+    while (( $# > 0 )); do
+
+        case "$1" in
+
+            --url)
+
+                if (( $# < 2 )); then
+                    log_error "--url requires a value."
+                    return 2
+                fi
+
+                GITHUB_RUNNER_URL="$2"
+                shift 2
+                ;;
+
+            --name)
+
+                if (( $# < 2 )); then
+                    log_error "--name requires a value."
+                    return 2
+                fi
+
+                GITHUB_RUNNER_SHORT_NAME="$2"
+                shift 2
+                ;;
+
+            --labels)
+
+                if (( $# < 2 )); then
+                    log_error "--labels requires a value."
+                    return 2
+                fi
+
+                GITHUB_RUNNER_LABELS="$2"
+                shift 2
+                ;;
+
+            --user)
+
+                if (( $# < 2 )); then
+                    log_error "--user requires a value."
+                    return 2
+                fi
+
+                GITHUB_RUNNER_USER="$2"
+                shift 2
+                ;;
+			
+            --version)
+
+                if (( $# < 2 )); then
+
+                    log_error "--version requires a value."
+
+                    return 2
+                fi
+
+                GITHUB_RUNNER_VERSION="$2"
+
+                shift 2
+
+                ;;
+
+            *)
+
+                log_error "Unknown GitHub Runner option: $1"
+                return 2
+                ;;
+        esac
+    done
+}
 
 # ==============================================================================
 # command_main
@@ -121,7 +209,7 @@ command_main() {
     #
     #     stoleus setup
     #
-    # In this case we display help rather than guessing what the user wants.
+    # In this case, display help rather than guessing what the user wants.
     # --------------------------------------------------------------------------
     if [[ -z "$component" ]]; then
 
@@ -136,10 +224,10 @@ command_main() {
     #
     # This is similar to a C# switch statement.
     # --------------------------------------------------------------------------
-        case "$component" in
+    case "$component" in
 
         # ----------------------------------------------------------------------
-        # Install/configure Chrony.
+        # Install and configure Chrony.
         # ----------------------------------------------------------------------
         chrony)
 
@@ -149,24 +237,26 @@ command_main() {
 
 
         # ----------------------------------------------------------------------
-        # Install/configure the UFW firewall.
+        # Install and configure the UFW firewall.
         # ----------------------------------------------------------------------
         firewall)
 
             setup_firewall
 
             ;;
-			
-		# ----------------------------------------------------------------------
-        # Setup directories.
+
+
         # ----------------------------------------------------------------------
-		directories)
+        # Create and configure the standard application directories.
+        # ----------------------------------------------------------------------
+        directories)
 
-			setup_application_directories
+            setup_application_directories
 
-			;;
-			
-		# ----------------------------------------------------------------------
+            ;;
+
+
+        # ----------------------------------------------------------------------
         # Install and configure Docker Engine, Buildx, and Docker Compose.
         # ----------------------------------------------------------------------
         docker)
@@ -174,6 +264,39 @@ command_main() {
             setup_docker
 
             ;;
+
+
+        # ----------------------------------------------------------------------
+        # GitHub Runner
+        #
+        # Configure a GitHub Actions self-hosted runner.
+        #
+        # Expected usage:
+        #
+        #     stoleus setup github-runner \
+        #         --url https://github.com/OWNER/REPOSITORY \
+        #         --name repository-name \
+        #         --labels self-hosted,linux,x64
+        #
+        # This branch:
+        #
+        #     1. Removes the already processed `github-runner` argument.
+        #     2. Parses the remaining command-line options.
+        #     3. Invokes the GitHub Runner component.
+        #
+        # The GitHub registration token is requested later by the component and
+        # is intentionally not accepted as a command-line argument.
+        # ----------------------------------------------------------------------
+        github-runner)
+
+            shift
+
+            parse_github_runner_options "$@" || return $?
+
+            github_runner_setup
+
+            ;;
+
 
         # ----------------------------------------------------------------------
         # Configure a complete server profile.
@@ -203,8 +326,8 @@ command_main() {
             setup_server_profile "$profile"
 
             ;;
-			
-			
+
+
         # ----------------------------------------------------------------------
         # Help aliases.
         # ----------------------------------------------------------------------
@@ -226,6 +349,7 @@ command_main() {
             print_setup_help
 
             return 2
+
             ;;
     esac
 }

@@ -49,6 +49,7 @@ source "${PROJECT_ROOT}/lib/components/chrony.sh"
 source "${PROJECT_ROOT}/lib/components/firewall.sh"
 source "${PROJECT_ROOT}/lib/components/docker.sh"
 source "${PROJECT_ROOT}/lib/components/directories.sh"
+source "${PROJECT_ROOT}/lib/components/github_runner.sh"
 source "${PROJECT_ROOT}/lib/components/profiles.sh"
 
 
