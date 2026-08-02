@@ -170,7 +170,7 @@ readonly PROJECT_ROOT="$(
 # available here.
 # ------------------------------------------------------------------------------
 source "${PROJECT_ROOT}/lib/common.sh"
-
+source "${PROJECT_ROOT}/lib/exit_codes.sh"
 
 # ------------------------------------------------------------------------------
 # Load the generic pipeline execution engine.

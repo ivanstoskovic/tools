@@ -962,6 +962,13 @@ github_runner_configure() {
         return 1
     fi
 
+	register_secret "$registration_token" || {
+
+		unset registration_token
+
+		return 1
+	}
+
 
     log_info \
         "Registering GitHub Runner: $github_runner_name" >&2
@@ -1010,6 +1017,7 @@ github_runner_configure() {
         "$github_runner_name" \
         "$runner_labels" >&2; then
 
+		unregister_secret "$registration_token"
         unset registration_token
 
         log_error "GitHub Runner registration failed."

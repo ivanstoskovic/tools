@@ -174,6 +174,7 @@ parse_github_runner_options() {
     done
 }
 
+
 # ==============================================================================
 # command_main
 # ==============================================================================
@@ -231,7 +232,9 @@ command_main() {
         # ----------------------------------------------------------------------
         chrony)
 
-            setup_chrony
+            run_with_log_context \
+                "chrony" \
+                setup_chrony
 
             ;;
 
@@ -241,7 +244,9 @@ command_main() {
         # ----------------------------------------------------------------------
         firewall)
 
-            setup_firewall
+            run_with_log_context \
+                "firewall" \
+                setup_firewall
 
             ;;
 
@@ -251,7 +256,9 @@ command_main() {
         # ----------------------------------------------------------------------
         directories)
 
-            setup_application_directories
+            run_with_log_context \
+                "directories" \
+                setup_application_directories
 
             ;;
 
@@ -261,14 +268,14 @@ command_main() {
         # ----------------------------------------------------------------------
         docker)
 
-            setup_docker
+            run_with_log_context \
+                "docker" \
+                setup_docker
 
             ;;
 
 
         # ----------------------------------------------------------------------
-        # GitHub Runner
-        #
         # Configure a GitHub Actions self-hosted runner.
         #
         # Expected usage:
@@ -278,14 +285,7 @@ command_main() {
         #         --name repository-name \
         #         --labels self-hosted,linux,x64
         #
-        # This branch:
-        #
-        #     1. Removes the already processed `github-runner` argument.
-        #     2. Parses the remaining command-line options.
-        #     3. Invokes the GitHub Runner component.
-        #
-        # The GitHub registration token is requested later by the component and
-        # is intentionally not accepted as a command-line argument.
+        # The registration token is requested securely by the component.
         # ----------------------------------------------------------------------
         github-runner)
 
@@ -293,7 +293,9 @@ command_main() {
 
             parse_github_runner_options "$@" || return $?
 
-            github_runner_setup
+            run_with_log_context \
+                "github-runner" \
+                github_runner_setup
 
             ;;
 
@@ -305,9 +307,6 @@ command_main() {
         #
         #     stoleus setup server app
         #     stoleus setup server stage
-        #
-        # `${2:-}`
-        #     The second argument contains the profile name.
         # ----------------------------------------------------------------------
         server)
 
@@ -323,7 +322,10 @@ command_main() {
                 return 2
             fi
 
-            setup_server_profile "$profile"
+            run_with_log_context \
+                "server:${profile}" \
+                setup_server_profile \
+                "$profile"
 
             ;;
 

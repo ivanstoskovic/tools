@@ -91,7 +91,7 @@ command_main() {
     # The quotes around 'HELP' prevent Bash from expanding variables or special
     # characters inside the help text.
     # --------------------------------------------------------------------------
-    cat <<'HELP'
+cat <<'EOF'
 Stoleus Tools
 
 Usage:
@@ -102,14 +102,15 @@ Available commands:
     version     Show the installed Stoleus Tools version
     health      Check server health
     setup       Install and configure server components
-	
 
 Setup components:
-    chrony      Install, enable, start, and verify Chrony
-    firewall    Install and configure the UFW firewall
-    server      Configure a complete server profile
-	docker      Install Docker Engine, Buildx, and Docker Compose
-	
+    chrony         Install, enable, start, and verify Chrony
+    firewall       Install and configure the UFW firewall
+    docker         Install Docker Engine, Buildx, and Docker Compose
+    directories    Create the standard application directories
+    github-runner  Install and configure a GitHub Actions runner
+    server         Configure a complete server profile
+
 Aliases:
     -h, --help
     -v, --version
@@ -121,8 +122,13 @@ Examples:
     stoleus setup help
     sudo stoleus setup chrony
     sudo stoleus setup firewall
+    sudo stoleus setup docker
+    sudo stoleus setup directories
+    sudo stoleus setup github-runner \
+        --url https://github.com/OWNER/REPOSITORY \
+        --name repository-name \
+        --labels self-hosted,linux,x64
     sudo stoleus setup server app
     sudo stoleus setup server stage
-	sudo stoleus setup docker
-HELP
+EOF
 }
