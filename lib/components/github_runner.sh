@@ -1008,7 +1008,7 @@ github_runner_configure() {
         "$repository_url" \
         "$registration_token" \
         "$github_runner_name" \
-        "$runner_labels"; then
+        "$runner_labels" >&2; then
 
         unset registration_token
 
@@ -1126,7 +1126,7 @@ github_runner_install_service() {
             cd -- "$installation_directory"
 
             ./svc.sh install "$runner_user"
-        ); then
+        ) >&2; then
 
             log_error "Failed to install GitHub Runner service."
 
@@ -1176,7 +1176,7 @@ github_runner_install_service() {
     service_name="${matching_services[0]}"
 
 
-    ensure_service_enabled_and_running "$service_name" || return 1
+    ensure_service_enabled_and_running "$service_name" >&2 || return 1
 
 
     log_success \
