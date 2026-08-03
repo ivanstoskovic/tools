@@ -459,6 +459,142 @@ github_runner_resolve_version() {
 
 
 # ==============================================================================
+# github_runner_get_installed_version
+# ==============================================================================
+#
+# Purpose:
+#     Read the version of an existing extracted GitHub Actions Runner.
+#
+# Arguments:
+#
+#     $1 = runner installation directory
+#
+# Output:
+#     Prints the installed version to stdout.
+#
+# Return codes:
+#
+#     0 = installed version found
+#     1 = installation or version unavailable
+#     2 = invalid argument
+# ==============================================================================
+github_runner_get_installed_version() {
+
+    local installation_directory="${1:-}"
+    local listener_path
+    local installed_version
+
+
+    if [[ -z "$installation_directory" ]]; then
+
+        log_error \
+            "github_runner_get_installed_version requires an installation directory."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    listener_path="${installation_directory}/bin/Runner.Listener"
+
+
+    if [[ ! -x "$listener_path" ]]; then
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    if ! installed_version="$(
+        "$listener_path" --version 2>/dev/null
+    )"; then
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    installed_version="${installed_version//$'\r'/}"
+    installed_version="${installed_version//$'\n'/}"
+
+
+    if [[ ! "$installed_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    printf '%s\n' "$installed_version"
+
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
+}
+
+
+# ==============================================================================
+# github_runner_requested_version_is_installed
+# ==============================================================================
+#
+# Purpose:
+#     Determine whether the requested Runner version is already extracted.
+#
+# Required variables:
+#
+#     GITHUB_RUNNER_VERSION
+#     GITHUB_RUNNER_INSTALLATION_DIRECTORY
+#
+# Return codes:
+#
+#     0 = requested version is installed
+#     1 = requested version is not installed
+#     2 = required state is missing
+# ==============================================================================
+github_runner_requested_version_is_installed() {
+
+    local requested_version="${GITHUB_RUNNER_VERSION:-}"
+    local installation_directory="${GITHUB_RUNNER_INSTALLATION_DIRECTORY:-}"
+
+    local installed_version
+
+
+    if [[ -z "$requested_version" ]]; then
+
+        log_error "GitHub Runner version has not been resolved."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    if [[ -z "$installation_directory" ]]; then
+
+        log_error \
+            "GitHub Runner installation directory has not been resolved."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    if ! installed_version="$(
+        github_runner_get_installed_version "$installation_directory"
+    )"; then
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    if [[ "$installed_version" != "$requested_version" ]]; then
+
+        log_info \
+            "Installed GitHub Runner version is ${installed_version}; requested version is ${requested_version}."
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    log_info \
+        "GitHub Runner ${requested_version} is already installed; archive download is not required."
+
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
+}
+
+
+# ==============================================================================
 # github_runner_download
 # ==============================================================================
 #
@@ -618,31 +754,18 @@ github_runner_download() {
 # ==============================================================================
 #
 # Purpose:
-#     Create the runner installation directory and extract the downloaded
-#     GitHub Actions Runner archive into it.
+#     Reuse or create the GitHub Runner installation directory.
 #
-# Required variables:
+# Valid existing installation:
 #
-#     GITHUB_RUNNER_SHORT_NAME
-#         Short repository identifier.
+#     The directory contains the official Runner files and the installed version
+#     matches the requested version.
 #
-#         Example:
+# This allows Stoleus to reuse:
 #
-#             noteverbal
-#
-#     GITHUB_RUNNER_USER
-#         Linux user that will own and run the runner.
-#
-#     GITHUB_RUNNER_ARCHIVE_PATH
-#         Path returned by github_runner_download().
-#
-# Installation directory:
-#
-#     /opt/runners/<short-name>
-#
-# Example:
-#
-#     /opt/runners/noteverbal
+#     - a configured runner;
+#     - an extracted but not yet registered runner;
+#     - a runner whose stale registration files were removed.
 #
 # Output:
 #     Prints the installation directory to stdout.
@@ -651,9 +774,11 @@ github_runner_extract() {
 
     local short_name="${GITHUB_RUNNER_SHORT_NAME:-}"
     local runner_user="${GITHUB_RUNNER_USER:-}"
+    local requested_version="${GITHUB_RUNNER_VERSION:-}"
     local archive_path="${GITHUB_RUNNER_ARCHIVE_PATH:-}"
 
     local installation_directory
+    local installed_version=""
 
 
     log_info "Preparing GitHub Runner extraction." >&2
@@ -663,7 +788,7 @@ github_runner_extract() {
 
         log_error "GitHub Runner short name has not been provided."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
@@ -671,70 +796,123 @@ github_runner_extract() {
 
         log_error "GitHub Runner user has not been provided."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
-    if [[ -z "$archive_path" ]]; then
+    if [[ -z "$requested_version" ]]; then
 
-        log_error "GitHub Runner archive path has not been provided."
+        log_error "GitHub Runner version has not been resolved."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
-
-
-    if [[ ! -s "$archive_path" ]]; then
-
-        log_error "GitHub Runner archive does not exist or is empty: $archive_path"
-
-        return 1
-    fi
-	
-	# --------------------------------------------------------------------------
-	# Verify that all required system commands are available before continuing.
-	# --------------------------------------------------------------------------
-	require_command "find" || return 1
-	require_command "chown" || return 1
 
 
     installation_directory="/opt/runners/${short_name}"
 
 
-    # --------------------------------------------------------------------------
-    # Refuse to overwrite an existing configured runner.
-    #
-    # GitHub Runner creates:
-    #
-    #     .runner
-    #
-    # after successful registration.
-    # --------------------------------------------------------------------------
-    if [[ -f "${installation_directory}/.runner" ]]; then
+    require_command "find" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
 
-        log_info \
-            "GitHub Runner is already configured: $installation_directory" >&2
+    require_command "chown" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+
+    # --------------------------------------------------------------------------
+    # Reuse a valid existing Runner installation.
+    #
+    # Runner.Listener --version proves that this is an extracted Runner package,
+    # rather than merely an arbitrary non-empty directory.
+    # --------------------------------------------------------------------------
+    if installed_version="$(
+        github_runner_get_installed_version "$installation_directory"
+    )"; then
+
+        if [[ "$installed_version" != "$requested_version" ]]; then
+
+            log_error \
+                "GitHub Runner version conflict in: $installation_directory"
+
+            log_error \
+                "Installed version: $installed_version"
+
+            log_error \
+                "Requested version: $requested_version"
+
+            return "${STOLEUS_EXIT_CONFLICT:-8}"
+        fi
+
+
+        if [[ ! -x "${installation_directory}/config.sh" ]] ||
+           [[ ! -x "${installation_directory}/run.sh" ]] ||
+           [[ ! -x "${installation_directory}/svc.sh" ]]; then
+
+            log_error \
+                "Existing GitHub Runner installation is incomplete: $installation_directory"
+
+            return "${STOLEUS_EXIT_CONFIGURATION:-6}"
+        fi
+
+
+        if [[ -f "${installation_directory}/.runner" ]]; then
+
+            log_info \
+                "GitHub Runner is already configured: $installation_directory" >&2
+
+        else
+
+            log_info \
+                "GitHub Runner files are already extracted and ready for registration: $installation_directory" >&2
+        fi
+
 
         printf '%s\n' "$installation_directory"
 
-        return 0
+        return "${STOLEUS_EXIT_SUCCESS:-0}"
     fi
 
 
     # --------------------------------------------------------------------------
-    # Avoid extracting into a non-empty unknown directory.
-    #
-    # This protects files from a failed or manually managed installation.
+    # Refuse an unknown non-empty directory.
     # --------------------------------------------------------------------------
     if [[ -d "$installation_directory" ]] &&
-       [[ -n "$(find "$installation_directory" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+       [[ -n "$(
+           find \
+               "$installation_directory" \
+               -mindepth 1 \
+               -maxdepth 1 \
+               -print \
+               -quit
+       )" ]]; then
 
         log_error \
-            "GitHub Runner directory exists and is not empty: $installation_directory"
+            "GitHub Runner directory exists but is not a valid Runner installation: $installation_directory"
 
         log_error \
-            "Stoleus will not overwrite an unknown or incomplete installation."
+            "Stoleus will not overwrite an unknown or incomplete directory."
 
-        return 1
+        return "${STOLEUS_EXIT_CONFLICT:-8}"
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # A new installation requires a downloaded archive.
+    # --------------------------------------------------------------------------
+    if [[ -z "$archive_path" ]]; then
+
+        log_error \
+            "GitHub Runner archive path has not been provided for a new installation."
+
+        return "${STOLEUS_EXIT_CONFIGURATION:-6}"
+    fi
+
+
+    if [[ ! -s "$archive_path" ]]; then
+
+        log_error \
+            "GitHub Runner archive does not exist or is empty: $archive_path"
+
+        return "${STOLEUS_EXIT_CONFIGURATION:-6}"
     fi
 
 
@@ -742,17 +920,16 @@ github_runner_extract() {
         "$installation_directory" \
         "0755" \
         "$runner_user" \
-        "$runner_user" >&2 || return 1
+        "$runner_user" >&2 ||
+        return "${STOLEUS_EXIT_FAILURE:-1}"
 
 
     extract_tar_gz \
         "$archive_path" \
-        "$installation_directory" >&2 || return 1
+        "$installation_directory" >&2 ||
+        return "${STOLEUS_EXIT_FAILURE:-1}"
 
 
-    # --------------------------------------------------------------------------
-    # Ensure extracted files belong to the service account.
-    # --------------------------------------------------------------------------
     if ! chown -R \
         "${runner_user}:${runner_user}" \
         "$installation_directory"; then
@@ -760,16 +937,40 @@ github_runner_extract() {
         log_error \
             "Failed to set GitHub Runner ownership: $installation_directory"
 
-        return 1
+        return "${STOLEUS_EXIT_PERMISSION:-5}"
     fi
 
 
-    if [[ ! -x "${installation_directory}/config.sh" ]]; then
+    if [[ ! -x "${installation_directory}/config.sh" ]] ||
+       [[ ! -x "${installation_directory}/bin/Runner.Listener" ]]; then
 
         log_error \
-            "GitHub Runner extraction verification failed: config.sh is missing."
+            "GitHub Runner extraction verification failed."
 
-        return 1
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
+    fi
+
+
+    if ! installed_version="$(
+        github_runner_get_installed_version "$installation_directory"
+    )"; then
+
+        log_error \
+            "Could not determine the extracted GitHub Runner version."
+
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
+    fi
+
+
+    if [[ "$installed_version" != "$requested_version" ]]; then
+
+        log_error \
+            "Extracted GitHub Runner version does not match the requested version."
+
+        log_error "Extracted version: $installed_version"
+        log_error "Requested version: $requested_version"
+
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
     fi
 
 
@@ -779,7 +980,7 @@ github_runner_extract() {
 
     printf '%s\n' "$installation_directory"
 
-    return 0
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
 
 
@@ -1233,15 +1434,172 @@ github_runner_install_service() {
 
 
 # ==============================================================================
+# github_runner_report_inactive_service
+# ==============================================================================
+#
+# Purpose:
+#     Inspect the latest Runner diagnostic log after the service exits.
+#
+# Detects known stale-registration and authentication failures and reports a
+# clear error instead of only saying that the systemd service is inactive.
+# ==============================================================================
+github_runner_report_inactive_service() {
+
+    local service_name="${1:-}"
+    local installation_directory="${2:-}"
+
+    local diagnostic_directory
+    local latest_log=""
+    local matching_error=""
+
+
+    if [[ -z "$service_name" ]] ||
+       [[ -z "$installation_directory" ]]; then
+
+        log_error \
+            "Runner failure diagnosis requires a service name and installation directory."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    diagnostic_directory="${installation_directory}/_diag"
+
+
+    log_error \
+        "GitHub Runner service stopped unexpectedly: $service_name"
+
+
+    if [[ ! -d "$diagnostic_directory" ]]; then
+
+        log_error \
+            "GitHub Runner diagnostic directory does not exist: $diagnostic_directory"
+
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Select the newest Runner diagnostic file.
+    #
+    # sed reads the complete sorted output, avoiding grep/head SIGPIPE behavior
+    # while pipefail is enabled.
+    # --------------------------------------------------------------------------
+    latest_log="$(
+        find \
+            "$diagnostic_directory" \
+            -maxdepth 1 \
+            -type f \
+            -name 'Runner_*.log' \
+            -printf '%T@ %p\n' 2>/dev/null |
+            sort -nr |
+            sed -n '1s/^[^ ]* //p'
+    )"
+
+
+    if [[ -z "$latest_log" ]] ||
+       [[ ! -r "$latest_log" ]]; then
+
+        log_error "No readable GitHub Runner diagnostic log was found."
+
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
+    fi
+
+
+    if grep -Fq \
+        "runner registration has been deleted from the server" \
+        "$latest_log"; then
+
+        matching_error="stale-registration"
+
+    elif grep -Fq \
+        "The token expired on" \
+        "$latest_log"; then
+
+        matching_error="expired-token"
+
+    elif grep -Fq \
+        "VssOAuthTokenRequestException" \
+        "$latest_log"; then
+
+        matching_error="oauth-authentication"
+
+    else
+
+        matching_error="unknown"
+    fi
+
+
+    case "$matching_error" in
+
+        stale-registration)
+
+            log_error \
+                "GitHub no longer accepts the local Runner registration."
+
+            log_error \
+                "The local .runner and credential files are stale and the Runner must be registered again."
+
+            ;;
+
+        expired-token)
+
+            log_error \
+                "GitHub Runner session creation failed because an authentication token was considered expired."
+
+            log_error \
+                "Verify system time and re-register the Runner with a fresh registration token."
+
+            ;;
+
+        oauth-authentication)
+
+            log_error \
+                "GitHub Runner OAuth authentication failed."
+
+            log_error \
+                "The local Runner registration may be stale or invalid."
+
+            ;;
+
+        *)
+
+            log_error \
+                "The Runner stopped for an unrecognized reason."
+
+            ;;
+    esac
+
+
+    log_error "Diagnostic log: $latest_log"
+
+    return "${STOLEUS_EXIT_VERIFICATION:-7}"
+}
+
+
+# ==============================================================================
 # github_runner_verify
 # ==============================================================================
 #
 # Purpose:
-#     Verify the exact systemd service belonging to the configured runner.
+#     Verify that the exact GitHub Runner service:
+#
+#         - exists;
+#         - is enabled;
+#         - is active;
+#         - remains active for the verification period.
+#
+# A Runner can appear active briefly and then exit after GitHub rejects its
+# registration. Therefore one immediate systemctl check is insufficient.
 # ==============================================================================
 github_runner_verify() {
 
     local service_name="${GITHUB_RUNNER_SERVICE_NAME:-}"
+    local installation_directory="${GITHUB_RUNNER_INSTALLATION_DIRECTORY:-}"
+
+    local verification_seconds=10
+    local poll_interval_seconds=2
+    local elapsed_seconds=0
 
 
     log_info "Verifying GitHub Runner installation."
@@ -1251,18 +1609,31 @@ github_runner_verify() {
 
         log_error "GitHub Runner service name has not been resolved."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
-    require_command "systemctl" || return 1
+    if [[ -z "$installation_directory" ]]; then
+
+        log_error \
+            "GitHub Runner installation directory has not been resolved."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    require_command "systemctl" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+    require_command "sleep" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
 
 
     if ! systemctl cat "$service_name" >/dev/null 2>&1; then
 
         log_error "GitHub Runner service does not exist: $service_name"
 
-        return 1
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
     fi
 
 
@@ -1270,126 +1641,309 @@ github_runner_verify() {
 
         log_error "GitHub Runner service is not enabled: $service_name"
 
-        return 1
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
     fi
+
+
+    log_info \
+        "Confirming that the GitHub Runner remains active for ${verification_seconds}s."
+
+
+    while (( elapsed_seconds < verification_seconds )); do
+
+        if ! systemctl is-active --quiet "$service_name"; then
+
+            github_runner_report_inactive_service \
+                "$service_name" \
+                "$installation_directory"
+
+            return "${STOLEUS_EXIT_VERIFICATION:-7}"
+        fi
+
+
+        sleep "$poll_interval_seconds"
+
+        elapsed_seconds=$(
+            (elapsed_seconds + poll_interval_seconds)
+        )
+    done
 
 
     if ! systemctl is-active --quiet "$service_name"; then
 
-        log_error "GitHub Runner service is not running: $service_name"
+        github_runner_report_inactive_service \
+            "$service_name" \
+            "$installation_directory"
 
-        return 1
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
     fi
 
 
     log_success \
-        "GitHub Runner installation verified: $service_name"
+        "GitHub Runner installation verified; service remained active for ${verification_seconds}s: $service_name"
 
-    return 0
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
-# ==============================================================================
-# setup_github_runner
-# ==============================================================================
-#
-# Purpose
-#
-#     Install and configure a GitHub Actions self-hosted runner.
-#
-# Execution Flow
-#
-#     Validate input
-#             ↓
-#     Detect architecture
-#             ↓
-#     Resolve version
-#             ↓
-#     Download runner
-#             ↓
-#     Extract runner
-#             ↓
-#     Configure runner
-#             ↓
-#     Install service
-#             ↓
-#     Verify installation
-#
-# Public Entry Point
-#
-#     This is the only function that should be called from outside this
-#     component.
-# ==============================================================================
+
 
 # ==============================================================================
 # github_runner_setup
 # ==============================================================================
 #
 # Purpose:
-#     Install and configure a GitHub Actions self-hosted runner.
+#     Execute the complete GitHub Actions Runner setup lifecycle.
 #
-# This function is the public entry point for the component.
+# Lifecycle:
+#
+#     1. Validate configuration and system clock.
+#     2. Detect the current server architecture.
+#     3. Resolve the requested Runner version.
+#     4. Determine the installation directory.
+#     5. Reuse the installed Runner when the requested version already exists.
+#     6. Download the Runner archive only when installation is required.
+#     7. Reuse or extract the Runner package.
+#     8. Register the Runner with GitHub when required.
+#     9. Install or reuse the corresponding systemd service.
+#    10. Verify that the service remains active.
+#    11. Print a final setup summary.
+#
+# Idempotency:
+#
+#     Re-running this function does not:
+#
+#         - download the archive when the requested version is already installed;
+#         - extract over an existing valid Runner installation;
+#         - register an already registered Runner again;
+#         - install a duplicate systemd service.
+#
+# Required configuration variables:
+#
+#     GITHUB_RUNNER_URL
+#     GITHUB_RUNNER_SHORT_NAME
+#     GITHUB_RUNNER_LABELS
+#     GITHUB_RUNNER_USER
+#
+# Generated state:
+#
+#     GITHUB_RUNNER_ARCHITECTURE
+#     GITHUB_RUNNER_VERSION
+#     GITHUB_RUNNER_ARCHIVE_PATH
+#     GITHUB_RUNNER_INSTALLATION_DIRECTORY
+#     GITHUB_RUNNER_NAME
+#     GITHUB_RUNNER_SERVICE_NAME
+#
+# Return codes:
+#
+#     0 = setup completed successfully
+#     non-zero = one lifecycle phase failed
 # ==============================================================================
 github_runner_setup() {
 
     log_info "Starting GitHub Runner setup."
 
 
-    github_runner_validate || return 1
+    # --------------------------------------------------------------------------
+    # Validate the complete Runner configuration before making changes.
+    #
+    # This validation includes:
+    #
+    #     - root permissions;
+    #     - external system-clock verification;
+    #     - repository URL;
+    #     - Runner short name;
+    #     - labels;
+    #     - Linux Runner user.
+    # --------------------------------------------------------------------------
+    github_runner_validate || return $?
 
 
+    # --------------------------------------------------------------------------
+    # Convert the local machine architecture into GitHub's package architecture.
+    #
+    # Examples:
+    #
+    #     x86_64  -> x64
+    #     aarch64 -> arm64
+    # --------------------------------------------------------------------------
     GITHUB_RUNNER_ARCHITECTURE="$(
         github_runner_detect_architecture
-    )" || return 1
+    )" || return $?
 
 
+    # --------------------------------------------------------------------------
+    # Resolve the requested GitHub Runner version.
+    #
+    # The result does not include the leading "v".
+    #
+    # Example:
+    #
+    #     2.334.0
+    # --------------------------------------------------------------------------
     GITHUB_RUNNER_VERSION="$(
         github_runner_resolve_version
-    )" || return 1
+    )" || return $?
 
 
-    GITHUB_RUNNER_ARCHIVE_PATH="$(
-        github_runner_download
-    )" || return 1
+    # --------------------------------------------------------------------------
+    # Resolve the deterministic installation directory before download.
+    #
+    # Example:
+    #
+    #     GITHUB_RUNNER_SHORT_NAME=tools
+    #
+    # becomes:
+    #
+    #     /opt/runners/tools
+    #
+    # This allows Stoleus to inspect an existing Runner installation before
+    # deciding whether an archive download is necessary.
+    # --------------------------------------------------------------------------
+    GITHUB_RUNNER_INSTALLATION_DIRECTORY="/opt/runners/${GITHUB_RUNNER_SHORT_NAME}"
 
 
+    # --------------------------------------------------------------------------
+    # Skip the archive download when the requested version is already installed.
+    #
+    # github_runner_requested_version_is_installed() verifies the version by
+    # executing:
+    #
+    #     bin/Runner.Listener --version
+    #
+    # inside the existing installation directory.
+    #
+    # When the requested version is already available:
+    #
+    #     - GITHUB_RUNNER_ARCHIVE_PATH remains empty;
+    #     - extraction reuses the existing installation;
+    #     - repeated setup becomes significantly faster.
+    #
+    # When the installation is absent or does not contain a readable Runner
+    # version, the official archive is downloaded.
+    # --------------------------------------------------------------------------
+    if github_runner_requested_version_is_installed; then
+
+        GITHUB_RUNNER_ARCHIVE_PATH=""
+
+    else
+
+        GITHUB_RUNNER_ARCHIVE_PATH="$(
+            github_runner_download
+        )" || return $?
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Reuse or create the Runner installation.
+    #
+    # github_runner_extract() handles:
+    #
+    #     - an already configured Runner;
+    #     - an extracted but unregistered Runner;
+    #     - a newly downloaded archive;
+    #     - version conflicts;
+    #     - unknown non-empty installation directories.
+    #
+    # It prints the verified installation directory to stdout.
+    # --------------------------------------------------------------------------
     GITHUB_RUNNER_INSTALLATION_DIRECTORY="$(
         github_runner_extract
-    )" || return 1
+    )" || return $?
 
 
+    # --------------------------------------------------------------------------
+    # Register the Runner with GitHub when registration is missing.
+    #
+    # If the local .runner metadata file already exists, the component reuses
+    # the existing registration and does not request another token.
+    #
+    # If registration is required, the temporary token is requested through a
+    # hidden interactive prompt and automatically registered for log redaction.
+    #
+    # The function prints the GitHub-visible Runner name to stdout.
+    #
+    # Example:
+    #
+    #     stoleusstage-tools
+    # --------------------------------------------------------------------------
     GITHUB_RUNNER_NAME="$(
         github_runner_configure
-    )" || return 1
+    )" || return $?
 
 
+    # --------------------------------------------------------------------------
+    # Locate or install the exact systemd service for this Runner.
+    #
+    # Existing services are reused rather than installed again.
+    #
+    # New services are installed for GITHUB_RUNNER_USER, not root.
+    #
+    # The function prints the exact systemd unit name to stdout.
+    #
+    # Example:
+    #
+    #     actions.runner.ivanstoskovic-tools.stoleusstage-tools.service
+    # --------------------------------------------------------------------------
     GITHUB_RUNNER_SERVICE_NAME="$(
-		github_runner_install_service
-	)" || return 1
-
-    github_runner_verify || return 1
+        github_runner_install_service
+    )" || return $?
 
 
+    # --------------------------------------------------------------------------
+    # Verify the completed Runner installation.
+    #
+    # The verification confirms that:
+    #
+    #     - the exact systemd service exists;
+    #     - the service is enabled;
+    #     - the service is active;
+    #     - the service remains active for the configured verification period.
+    #
+    # If the service exits during verification, the latest Runner diagnostic log
+    # is inspected so stale registration or OAuth failures can be reported more
+    # clearly.
+    # --------------------------------------------------------------------------
+    github_runner_verify || return $?
+
+
+    # --------------------------------------------------------------------------
+    # Print the final installation summary.
+    # --------------------------------------------------------------------------
     log_info \
         "Selected GitHub Runner architecture: $GITHUB_RUNNER_ARCHITECTURE"
 
     log_info \
         "Selected GitHub Runner version: $GITHUB_RUNNER_VERSION"
 
-    log_info \
-        "Downloaded GitHub Runner archive: $GITHUB_RUNNER_ARCHIVE_PATH"
+
+    # --------------------------------------------------------------------------
+    # The archive path is empty when an existing matching installation was
+    # reused.
+    # --------------------------------------------------------------------------
+    if [[ -n "$GITHUB_RUNNER_ARCHIVE_PATH" ]]; then
+
+        log_info \
+            "Downloaded GitHub Runner archive: $GITHUB_RUNNER_ARCHIVE_PATH"
+
+    else
+
+        log_info \
+            "GitHub Runner archive download skipped because version ${GITHUB_RUNNER_VERSION} is already installed."
+    fi
+
 
     log_info \
         "GitHub Runner installation directory: $GITHUB_RUNNER_INSTALLATION_DIRECTORY"
 
     log_info \
         "Registered GitHub Runner name: $GITHUB_RUNNER_NAME"
-		
-	log_info \
-		"GitHub Runner service: $GITHUB_RUNNER_SERVICE_NAME"
+
+    log_info \
+        "GitHub Runner service: $GITHUB_RUNNER_SERVICE_NAME"
 
 
     log_success "GitHub Runner setup completed successfully."
 
-    return 0
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
 
 
