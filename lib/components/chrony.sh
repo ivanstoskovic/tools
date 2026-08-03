@@ -113,20 +113,15 @@ verify_chrony_synchronization() {
             #     Normal
             # ------------------------------------------------------------------
             leap_status="$(
-                awk -F ':' '
-                    /^Leap status/ {
-                        value = $2
-                        gsub(
-                            /^[[:space:]]+|[[:space:]]+$/,
-                            "",
-                            value
-                        )
-
-                        print value
-                        exit
-                    }
-                ' <<< "$tracking_output"
-            )"
+				awk -F ':' '
+					/^Leap status/ {
+						value = $2
+						gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+						print value
+						exit
+					}
+				' <<< "$tracking_output"
+			)"
 
 
             # ------------------------------------------------------------------
