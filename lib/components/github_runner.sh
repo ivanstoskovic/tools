@@ -1978,22 +1978,20 @@ github_runner_verify() {
 
     while (( elapsed_seconds < verification_seconds )); do
 
-        if ! systemctl is-active --quiet "$service_name"; then
+		if ! systemctl is-active --quiet "$service_name"; then
 
-            github_runner_report_inactive_service \
-                "$service_name" \
-                "$installation_directory"
+			github_runner_report_inactive_service \
+				"$service_name" \
+				"$installation_directory"
 
-            return "${STOLEUS_EXIT_VERIFICATION:-7}"
-        fi
+			return "${STOLEUS_EXIT_VERIFICATION:-7}"
+		fi
 
 
-        sleep "$poll_interval_seconds"
+		sleep "$poll_interval_seconds"
 
-        elapsed_seconds=$(
-            (elapsed_seconds + poll_interval_seconds)
-        )
-    done
+		(( elapsed_seconds += poll_interval_seconds ))
+	done
 
 
     if ! systemctl is-active --quiet "$service_name"; then
