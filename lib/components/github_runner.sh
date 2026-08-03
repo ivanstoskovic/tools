@@ -92,7 +92,8 @@ github_runner_validate() {
     #
     # The runner service itself will later run as the non-root deployer user.
     # --------------------------------------------------------------------------
-    require_root || return 1
+    require_root ||
+    return "${STOLEUS_EXIT_PERMISSION:-5}"
 
 	# --------------------------------------------------------------------------
     # GitHub Runner registration and OAuth session creation are time-sensitive.
