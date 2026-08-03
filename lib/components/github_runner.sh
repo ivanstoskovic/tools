@@ -528,34 +528,185 @@ github_runner_get_installed_version() {
 
 
 # ==============================================================================
+# github_runner_compare_versions
+# ==============================================================================
+#
+# Purpose:
+#     Compare two semantic-style version numbers using GNU version sorting.
+#
+# Usage:
+#
+#     comparison="$(
+#         github_runner_compare_versions \
+#             "2.336.0" \
+#             "2.334.0"
+#     )"
+#
+# Arguments:
+#
+#     $1 = left version
+#     $2 = right version
+#
+# Output:
+#
+#     -1
+#         Left version is older than the right version.
+#
+#      0
+#         Both versions are equal.
+#
+#      1
+#         Left version is newer than the right version.
+#
+# Example:
+#
+#     github_runner_compare_versions "2.336.0" "2.334.0"
+#
+# outputs:
+#
+#     1
+#
+# Return codes:
+#
+#     0 = comparison completed successfully
+#     2 = invalid arguments
+#     3 = required command unavailable
+# ==============================================================================
+github_runner_compare_versions() {
+
+    local left_version="${1:-}"
+    local right_version="${2:-}"
+
+    local oldest_version=""
+
+
+    if [[ -z "$left_version" ]]; then
+
+        log_error \
+            "github_runner_compare_versions requires a left version."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    if [[ -z "$right_version" ]]; then
+
+        log_error \
+            "github_runner_compare_versions requires a right version."
+
+        return "${STOLEUS_EXIT_USAGE:-2}"
+    fi
+
+
+    require_command "sort" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+
+    if [[ "$left_version" == "$right_version" ]]; then
+
+        printf '0\n'
+
+        return "${STOLEUS_EXIT_SUCCESS:-0}"
+    fi
+
+
+    # --------------------------------------------------------------------------
+    # Sort both versions from oldest to newest.
+    #
+    # sed reads the complete pipeline and prints only the first line. This avoids
+    # the early-pipeline termination behavior associated with grep -q or head
+    # while pipefail is enabled.
+    # --------------------------------------------------------------------------
+    if ! oldest_version="$(
+        printf '%s\n%s\n' \
+            "$left_version" \
+            "$right_version" |
+            sort -V |
+            sed -n '1p'
+    )"; then
+
+        log_error \
+            "Failed to compare GitHub Runner versions."
+
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+    fi
+
+
+    if [[ "$oldest_version" == "$left_version" ]]; then
+
+        printf '%s\n' '-1'
+
+    else
+
+        printf '%s\n' '1'
+    fi
+
+
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
+}
+
+
+# ==============================================================================
 # github_runner_requested_version_is_installed
 # ==============================================================================
 #
 # Purpose:
-#     Determine whether the requested Runner version is already extracted.
+#     Determine whether an existing GitHub Runner installation satisfies the
+#     requested minimum version.
+#
+# Version policy:
+#
+#     installed version == requested version
+#         The installation is reused.
+#
+#     installed version > requested version
+#         The newer installation is reused.
+#
+#         GitHub Actions runners may update themselves automatically, so a newer
+#         installed version is valid and must not be downgraded.
+#
+#     installed version < requested version
+#         The installation does not satisfy the requested minimum.
+#
+#         Stoleus currently stops with a version conflict because an in-place
+#         Runner upgrade lifecycle has not yet been implemented.
+#
+#     no valid installation found
+#         Return 1 so github_runner_setup() downloads a new installation.
 #
 # Required variables:
 #
 #     GITHUB_RUNNER_VERSION
 #     GITHUB_RUNNER_INSTALLATION_DIRECTORY
 #
+# Generated state:
+#
+#     GITHUB_RUNNER_VERSION
+#
+#         When a newer Runner is already installed, this variable is updated to
+#         the actual installed version so all later phases and summary messages
+#         use accurate state.
+#
 # Return codes:
 #
-#     0 = requested version is installed
-#     1 = requested version is not installed
+#     0 = existing installation satisfies the requested minimum version
+#     1 = no valid Runner installation was found
 #     2 = required state is missing
+#     8 = installed Runner is older than the requested minimum
 # ==============================================================================
 github_runner_requested_version_is_installed() {
 
     local requested_version="${GITHUB_RUNNER_VERSION:-}"
     local installation_directory="${GITHUB_RUNNER_INSTALLATION_DIRECTORY:-}"
 
-    local installed_version
+    local installed_version=""
+    local version_comparison=""
 
 
     if [[ -z "$requested_version" ]]; then
 
-        log_error "GitHub Runner version has not been resolved."
+        log_error \
+            "GitHub Runner version has not been resolved."
 
         return "${STOLEUS_EXIT_USAGE:-2}"
     fi
@@ -570,27 +721,94 @@ github_runner_requested_version_is_installed() {
     fi
 
 
+    # --------------------------------------------------------------------------
+    # A missing or unreadable Runner.Listener means there is no reusable Runner
+    # installation at this path.
+    #
+    # This is not logged as an error because it is a normal first-install state.
+    # --------------------------------------------------------------------------
     if ! installed_version="$(
-        github_runner_get_installed_version "$installation_directory"
+        github_runner_get_installed_version \
+            "$installation_directory"
     )"; then
 
-        return "${STOLEUS_EXIT_FAILURE:-1}"
-    fi
-
-
-    if [[ "$installed_version" != "$requested_version" ]]; then
-
-        log_info \
-            "Installed GitHub Runner version is ${installed_version}; requested version is ${requested_version}."
+        log_debug \
+            "No valid GitHub Runner installation was found in: $installation_directory"
 
         return "${STOLEUS_EXIT_FAILURE:-1}"
     fi
 
 
-    log_info \
-        "GitHub Runner ${requested_version} is already installed; archive download is not required."
+    if ! version_comparison="$(
+        github_runner_compare_versions \
+            "$installed_version" \
+            "$requested_version"
+    )"; then
 
-    return "${STOLEUS_EXIT_SUCCESS:-0}"
+        return $?
+    fi
+
+
+    case "$version_comparison" in
+
+        0)
+
+            log_info \
+                "GitHub Runner ${requested_version} is already installed; archive download is not required."
+
+            return "${STOLEUS_EXIT_SUCCESS:-0}"
+
+            ;;
+
+
+        1)
+
+            log_info \
+                "Installed GitHub Runner version ${installed_version} is newer than requested version ${requested_version}."
+
+            log_info \
+                "The newer installed GitHub Runner will be reused; archive download is not required."
+
+
+            # ------------------------------------------------------------------
+            # Use the actual installed version throughout the remaining setup
+            # lifecycle and in the final summary.
+            #
+            # This function is called directly, not through command substitution,
+            # so this global state change remains available to the caller.
+            # ------------------------------------------------------------------
+            GITHUB_RUNNER_VERSION="$installed_version"
+
+            return "${STOLEUS_EXIT_SUCCESS:-0}"
+
+            ;;
+
+
+        -1)
+
+            log_error \
+                "Installed GitHub Runner version ${installed_version} is older than requested minimum version ${requested_version}."
+
+            log_error \
+                "Automatic GitHub Runner upgrades are not implemented yet."
+
+            log_error \
+                "Stoleus will not overwrite or partially upgrade the existing Runner installation."
+
+            return "${STOLEUS_EXIT_CONFLICT:-8}"
+
+            ;;
+
+
+        *)
+
+            log_error \
+                "Unexpected GitHub Runner version-comparison result: $version_comparison"
+
+            return "${STOLEUS_EXIT_FAILURE:-1}"
+
+            ;;
+    esac
 }
 
 
@@ -754,21 +972,55 @@ github_runner_download() {
 # ==============================================================================
 #
 # Purpose:
-#     Reuse or create the GitHub Runner installation directory.
+#     Reuse an existing valid GitHub Runner installation or extract a newly
+#     downloaded Runner archive.
 #
-# Valid existing installation:
+# Existing-installation policy:
 #
-#     The directory contains the official Runner files and the installed version
-#     matches the requested version.
+#     installed version == requested version
+#         Reuse the existing installation.
 #
-# This allows Stoleus to reuse:
+#     installed version > requested version
+#         Reuse the newer existing installation.
 #
-#     - a configured runner;
-#     - an extracted but not yet registered runner;
-#     - a runner whose stale registration files were removed.
+#     installed version < requested version
+#         Stop with a conflict because automatic in-place upgrades are not yet
+#         implemented.
+#
+# Valid reusable states:
+#
+#     - Runner files exist and `.runner` exists:
+#           Runner is extracted and locally configured.
+#
+#     - Runner files exist and `.runner` does not exist:
+#           Runner is extracted but requires registration.
+#
+# Unknown non-empty directories are never overwritten.
+#
+# Required variables:
+#
+#     GITHUB_RUNNER_SHORT_NAME
+#     GITHUB_RUNNER_USER
+#     GITHUB_RUNNER_VERSION
+#
+# Optional variable:
+#
+#     GITHUB_RUNNER_ARCHIVE_PATH
+#
+#         Required only when no valid existing installation is available.
 #
 # Output:
-#     Prints the installation directory to stdout.
+#     Prints the verified installation directory to stdout.
+#
+# Return codes:
+#
+#     0 = installation reused or extracted successfully
+#     2 = required state is missing
+#     3 = required command unavailable
+#     5 = permission or ownership failure
+#     6 = invalid installation or archive configuration
+#     7 = extraction verification failed
+#     8 = existing installation conflicts with the requested version
 # ==============================================================================
 github_runner_extract() {
 
@@ -777,8 +1029,9 @@ github_runner_extract() {
     local requested_version="${GITHUB_RUNNER_VERSION:-}"
     local archive_path="${GITHUB_RUNNER_ARCHIVE_PATH:-}"
 
-    local installation_directory
+    local installation_directory=""
     local installed_version=""
+    local version_comparison=""
 
 
     log_info "Preparing GitHub Runner extraction." >&2
@@ -786,7 +1039,8 @@ github_runner_extract() {
 
     if [[ -z "$short_name" ]]; then
 
-        log_error "GitHub Runner short name has not been provided."
+        log_error \
+            "GitHub Runner short name has not been provided."
 
         return "${STOLEUS_EXIT_USAGE:-2}"
     fi
@@ -794,7 +1048,8 @@ github_runner_extract() {
 
     if [[ -z "$runner_user" ]]; then
 
-        log_error "GitHub Runner user has not been provided."
+        log_error \
+            "GitHub Runner user has not been provided."
 
         return "${STOLEUS_EXIT_USAGE:-2}"
     fi
@@ -802,7 +1057,8 @@ github_runner_extract() {
 
     if [[ -z "$requested_version" ]]; then
 
-        log_error "GitHub Runner version has not been resolved."
+        log_error \
+            "GitHub Runner version has not been resolved."
 
         return "${STOLEUS_EXIT_USAGE:-2}"
     fi
@@ -819,33 +1075,85 @@ github_runner_extract() {
 
 
     # --------------------------------------------------------------------------
-    # Reuse a valid existing Runner installation.
+    # Detect and validate a reusable existing Runner installation.
     #
-    # Runner.Listener --version proves that this is an extracted Runner package,
-    # rather than merely an arbitrary non-empty directory.
+    # Runner.Listener --version distinguishes a genuine extracted Runner package
+    # from an arbitrary non-empty directory.
     # --------------------------------------------------------------------------
     if installed_version="$(
-        github_runner_get_installed_version "$installation_directory"
+        github_runner_get_installed_version \
+            "$installation_directory"
     )"; then
 
-        if [[ "$installed_version" != "$requested_version" ]]; then
+        if ! version_comparison="$(
+            github_runner_compare_versions \
+                "$installed_version" \
+                "$requested_version"
+        )"; then
 
-            log_error \
-                "GitHub Runner version conflict in: $installation_directory"
-
-            log_error \
-                "Installed version: $installed_version"
-
-            log_error \
-                "Requested version: $requested_version"
-
-            return "${STOLEUS_EXIT_CONFLICT:-8}"
+            return $?
         fi
 
 
+        case "$version_comparison" in
+
+            0)
+
+                log_debug \
+                    "Existing GitHub Runner version matches the requested version: $installed_version"
+
+                ;;
+
+
+            1)
+
+                log_info \
+                    "Using newer installed GitHub Runner version ${installed_version} instead of requested version ${requested_version}." >&2
+
+                ;;
+
+
+            -1)
+
+                log_error \
+                    "Existing GitHub Runner is older than the requested minimum version."
+
+                log_error \
+                    "Installation directory: $installation_directory"
+
+                log_error \
+                    "Installed version: $installed_version"
+
+                log_error \
+                    "Requested minimum version: $requested_version"
+
+                log_error \
+                    "Automatic in-place Runner upgrades are not implemented yet."
+
+                return "${STOLEUS_EXIT_CONFLICT:-8}"
+
+                ;;
+
+
+            *)
+
+                log_error \
+                    "Unexpected GitHub Runner version-comparison result: $version_comparison"
+
+                return "${STOLEUS_EXIT_FAILURE:-1}"
+
+                ;;
+        esac
+
+
+        # ----------------------------------------------------------------------
+        # Verify the required official Runner scripts before reusing the
+        # installation.
+        # ----------------------------------------------------------------------
         if [[ ! -x "${installation_directory}/config.sh" ]] ||
            [[ ! -x "${installation_directory}/run.sh" ]] ||
-           [[ ! -x "${installation_directory}/svc.sh" ]]; then
+           [[ ! -x "${installation_directory}/svc.sh" ]] ||
+           [[ ! -x "${installation_directory}/bin/Runner.Listener" ]]; then
 
             log_error \
                 "Existing GitHub Runner installation is incomplete: $installation_directory"
@@ -873,7 +1181,9 @@ github_runner_extract() {
 
 
     # --------------------------------------------------------------------------
-    # Refuse an unknown non-empty directory.
+    # The directory exists but does not contain a readable official Runner.
+    #
+    # Never overwrite unknown or incomplete content automatically.
     # --------------------------------------------------------------------------
     if [[ -d "$installation_directory" ]] &&
        [[ -n "$(
@@ -930,6 +1240,10 @@ github_runner_extract() {
         return "${STOLEUS_EXIT_FAILURE:-1}"
 
 
+    # --------------------------------------------------------------------------
+    # Ensure that the configured non-root Runner account owns all extracted
+    # files.
+    # --------------------------------------------------------------------------
     if ! chown -R \
         "${runner_user}:${runner_user}" \
         "$installation_directory"; then
@@ -941,7 +1255,12 @@ github_runner_extract() {
     fi
 
 
+    # --------------------------------------------------------------------------
+    # Verify critical extracted files.
+    # --------------------------------------------------------------------------
     if [[ ! -x "${installation_directory}/config.sh" ]] ||
+       [[ ! -x "${installation_directory}/run.sh" ]] ||
+       [[ ! -x "${installation_directory}/svc.sh" ]] ||
        [[ ! -x "${installation_directory}/bin/Runner.Listener" ]]; then
 
         log_error \
@@ -952,7 +1271,8 @@ github_runner_extract() {
 
 
     if ! installed_version="$(
-        github_runner_get_installed_version "$installation_directory"
+        github_runner_get_installed_version \
+            "$installation_directory"
     )"; then
 
         log_error \
@@ -962,13 +1282,20 @@ github_runner_extract() {
     fi
 
 
+    # --------------------------------------------------------------------------
+    # A newly downloaded archive must exactly match the resolved requested
+    # version.
+    # --------------------------------------------------------------------------
     if [[ "$installed_version" != "$requested_version" ]]; then
 
         log_error \
             "Extracted GitHub Runner version does not match the requested version."
 
-        log_error "Extracted version: $installed_version"
-        log_error "Requested version: $requested_version"
+        log_error \
+            "Extracted version: $installed_version"
+
+        log_error \
+            "Requested version: $requested_version"
 
         return "${STOLEUS_EXIT_VERIFICATION:-7}"
     fi
@@ -1693,35 +2020,34 @@ github_runner_verify() {
 # Purpose:
 #     Execute the complete GitHub Actions Runner setup lifecycle.
 #
+# Version policy:
+#
+#     GITHUB_RUNNER_VERSION represents the minimum acceptable Runner version.
+#
+#     - Equal installed version:
+#           Reuse it.
+#
+#     - Newer installed version:
+#           Reuse it and update the active version state.
+#
+#     - Older installed version:
+#           Stop with a clear version conflict.
+#
+#     - No installation:
+#           Download and extract the requested version.
+#
 # Lifecycle:
 #
-#     1. Validate configuration and system clock.
-#     2. Detect the current server architecture.
-#     3. Resolve the requested Runner version.
-#     4. Determine the installation directory.
-#     5. Reuse the installed Runner when the requested version already exists.
-#     6. Download the Runner archive only when installation is required.
-#     7. Reuse or extract the Runner package.
-#     8. Register the Runner with GitHub when required.
-#     9. Install or reuse the corresponding systemd service.
-#    10. Verify that the service remains active.
-#    11. Print a final setup summary.
-#
-# Idempotency:
-#
-#     Re-running this function does not:
-#
-#         - download the archive when the requested version is already installed;
-#         - extract over an existing valid Runner installation;
-#         - register an already registered Runner again;
-#         - install a duplicate systemd service.
-#
-# Required configuration variables:
-#
-#     GITHUB_RUNNER_URL
-#     GITHUB_RUNNER_SHORT_NAME
-#     GITHUB_RUNNER_LABELS
-#     GITHUB_RUNNER_USER
+#     1. Validate configuration and system time.
+#     2. Detect architecture.
+#     3. Resolve requested minimum Runner version.
+#     4. Inspect any existing installation.
+#     5. Download only when no acceptable installation exists.
+#     6. Reuse or extract Runner files.
+#     7. Reuse or create GitHub registration.
+#     8. Reuse or install the systemd service.
+#     9. Verify that the Runner remains active.
+#    10. Print a final summary.
 #
 # Generated state:
 #
@@ -1735,20 +2061,22 @@ github_runner_verify() {
 # Return codes:
 #
 #     0 = setup completed successfully
-#     non-zero = one lifecycle phase failed
+#     non-zero = one setup lifecycle phase failed
 # ==============================================================================
 github_runner_setup() {
+
+    local installed_version_check_exit_code=0
+    local conflict_exit_code="${STOLEUS_EXIT_CONFLICT:-8}"
+
 
     log_info "Starting GitHub Runner setup."
 
 
     # --------------------------------------------------------------------------
-    # Validate the complete Runner configuration before making changes.
-    #
-    # This validation includes:
+    # Validate:
     #
     #     - root permissions;
-    #     - external system-clock verification;
+    #     - external system time;
     #     - repository URL;
     #     - Runner short name;
     #     - labels;
@@ -1758,7 +2086,7 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Convert the local machine architecture into GitHub's package architecture.
+    # Resolve GitHub package architecture.
     #
     # Examples:
     #
@@ -1771,13 +2099,7 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Resolve the requested GitHub Runner version.
-    #
-    # The result does not include the leading "v".
-    #
-    # Example:
-    #
-    #     2.334.0
+    # Resolve the configured minimum Runner version.
     # --------------------------------------------------------------------------
     GITHUB_RUNNER_VERSION="$(
         github_runner_resolve_version
@@ -1785,46 +2107,47 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Resolve the deterministic installation directory before download.
-    #
-    # Example:
-    #
-    #     GITHUB_RUNNER_SHORT_NAME=tools
-    #
-    # becomes:
-    #
-    #     /opt/runners/tools
-    #
-    # This allows Stoleus to inspect an existing Runner installation before
-    # deciding whether an archive download is necessary.
+    # Resolve the deterministic installation directory before download so an
+    # existing Runner installation can be inspected first.
     # --------------------------------------------------------------------------
     GITHUB_RUNNER_INSTALLATION_DIRECTORY="/opt/runners/${GITHUB_RUNNER_SHORT_NAME}"
 
 
     # --------------------------------------------------------------------------
-    # Skip the archive download when the requested version is already installed.
+    # Decide whether an archive download is required.
     #
-    # github_runner_requested_version_is_installed() verifies the version by
-    # executing:
+    # Return values from github_runner_requested_version_is_installed():
     #
-    #     bin/Runner.Listener --version
+    #     0
+    #         Equal or newer Runner version already installed.
     #
-    # inside the existing installation directory.
+    #     1
+    #         No valid existing Runner installation; download is required.
     #
-    # When the requested version is already available:
-    #
-    #     - GITHUB_RUNNER_ARCHIVE_PATH remains empty;
-    #     - extraction reuses the existing installation;
-    #     - repeated setup becomes significantly faster.
-    #
-    # When the installation is absent or does not contain a readable Runner
-    # version, the official archive is downloaded.
+    #     8
+    #         Existing Runner is older than the requested minimum. Stop because
+    #         automatic upgrades are not implemented.
     # --------------------------------------------------------------------------
     if github_runner_requested_version_is_installed; then
 
         GITHUB_RUNNER_ARCHIVE_PATH=""
 
     else
+
+        installed_version_check_exit_code=$?
+
+
+        if (( installed_version_check_exit_code == conflict_exit_code )); then
+
+            return "$installed_version_check_exit_code"
+        fi
+
+
+        if (( installed_version_check_exit_code != ${STOLEUS_EXIT_FAILURE:-1} )); then
+
+            return "$installed_version_check_exit_code"
+        fi
+
 
         GITHUB_RUNNER_ARCHIVE_PATH="$(
             github_runner_download
@@ -1833,17 +2156,8 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Reuse or create the Runner installation.
-    #
-    # github_runner_extract() handles:
-    #
-    #     - an already configured Runner;
-    #     - an extracted but unregistered Runner;
-    #     - a newly downloaded archive;
-    #     - version conflicts;
-    #     - unknown non-empty installation directories.
-    #
-    # It prints the verified installation directory to stdout.
+    # Reuse the valid existing installation or extract the newly downloaded
+    # archive.
     # --------------------------------------------------------------------------
     GITHUB_RUNNER_INSTALLATION_DIRECTORY="$(
         github_runner_extract
@@ -1851,19 +2165,8 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Register the Runner with GitHub when registration is missing.
-    #
-    # If the local .runner metadata file already exists, the component reuses
-    # the existing registration and does not request another token.
-    #
-    # If registration is required, the temporary token is requested through a
-    # hidden interactive prompt and automatically registered for log redaction.
-    #
-    # The function prints the GitHub-visible Runner name to stdout.
-    #
-    # Example:
-    #
-    #     stoleusstage-tools
+    # Reuse the existing local registration or register the Runner using a fresh
+    # temporary token.
     # --------------------------------------------------------------------------
     GITHUB_RUNNER_NAME="$(
         github_runner_configure
@@ -1871,17 +2174,7 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Locate or install the exact systemd service for this Runner.
-    #
-    # Existing services are reused rather than installed again.
-    #
-    # New services are installed for GITHUB_RUNNER_USER, not root.
-    #
-    # The function prints the exact systemd unit name to stdout.
-    #
-    # Example:
-    #
-    #     actions.runner.ivanstoskovic-tools.stoleusstage-tools.service
+    # Reuse or install the exact systemd service for this Runner.
     # --------------------------------------------------------------------------
     GITHUB_RUNNER_SERVICE_NAME="$(
         github_runner_install_service
@@ -1889,36 +2182,22 @@ github_runner_setup() {
 
 
     # --------------------------------------------------------------------------
-    # Verify the completed Runner installation.
-    #
-    # The verification confirms that:
-    #
-    #     - the exact systemd service exists;
-    #     - the service is enabled;
-    #     - the service is active;
-    #     - the service remains active for the configured verification period.
-    #
-    # If the service exits during verification, the latest Runner diagnostic log
-    # is inspected so stale registration or OAuth failures can be reported more
-    # clearly.
+    # Confirm that the exact service exists, is enabled, is active, and remains
+    # active throughout the verification period.
     # --------------------------------------------------------------------------
     github_runner_verify || return $?
 
 
     # --------------------------------------------------------------------------
-    # Print the final installation summary.
+    # Final setup summary.
     # --------------------------------------------------------------------------
     log_info \
         "Selected GitHub Runner architecture: $GITHUB_RUNNER_ARCHITECTURE"
 
     log_info \
-        "Selected GitHub Runner version: $GITHUB_RUNNER_VERSION"
+        "Active GitHub Runner version: $GITHUB_RUNNER_VERSION"
 
 
-    # --------------------------------------------------------------------------
-    # The archive path is empty when an existing matching installation was
-    # reused.
-    # --------------------------------------------------------------------------
     if [[ -n "$GITHUB_RUNNER_ARCHIVE_PATH" ]]; then
 
         log_info \
@@ -1941,10 +2220,10 @@ github_runner_setup() {
         "GitHub Runner service: $GITHUB_RUNNER_SERVICE_NAME"
 
 
-    log_success "GitHub Runner setup completed successfully."
+    log_success \
+        "GitHub Runner setup completed successfully."
 
     return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
-
 
 
