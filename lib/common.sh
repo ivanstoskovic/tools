@@ -73,6 +73,8 @@ readonly STOLEUS_VERSION_FILE="${PROJECT_ROOT}/VERSION"
 # ==============================================================================
 source "${PROJECT_ROOT}/lib/text/secrets.sh"
 source "${PROJECT_ROOT}/lib/text/logging.sh"
+source "${PROJECT_ROOT}/lib/text/normalization.sh"
+source "${PROJECT_ROOT}/lib/text/encoding.sh"
 source "${PROJECT_ROOT}/lib/text/output.sh"
 
 
@@ -90,6 +92,7 @@ source "${PROJECT_ROOT}/lib/filesystem/checksums.sh"
 source "${PROJECT_ROOT}/lib/filesystem/directories.sh"
 source "${PROJECT_ROOT}/lib/filesystem/backups.sh"
 source "${PROJECT_ROOT}/lib/filesystem/files.sh"
+source "${PROJECT_ROOT}/lib/filesystem/binary.sh"
 
 
 # ==============================================================================
