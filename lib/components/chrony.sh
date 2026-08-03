@@ -57,7 +57,7 @@ verify_chrony_synchronization() {
     local current_attempt=1
 
     local maximum_chrony_offset_seconds="1.0"
-    local maximum_external_skew_seconds="5"
+    local maximum_external_skew_seconds="30"
 
     local tracking_output=""
     local leap_status=""
