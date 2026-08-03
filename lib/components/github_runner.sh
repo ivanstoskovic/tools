@@ -94,7 +94,15 @@ github_runner_validate() {
     # --------------------------------------------------------------------------
     require_root || return 1
 
-
+	# --------------------------------------------------------------------------
+    # GitHub Runner registration and OAuth session creation are time-sensitive.
+    # Refuse registration if the machine clock differs materially from GitHub.
+    # --------------------------------------------------------------------------
+    verify_remote_clock_skew \
+        "https://github.com" \
+        "5" || return $?
+		
+		
     # --------------------------------------------------------------------------
     # Confirm that all expected variables exist.
     #

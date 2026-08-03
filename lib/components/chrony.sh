@@ -2,55 +2,94 @@
 
 set -Eeuo pipefail
 
+
 # ==============================================================================
 # verify_chrony_synchronization
 # ==============================================================================
 #
 # Purpose:
 #     Verify that Chrony has a valid synchronization source and that the local
-#     system clock is actually close to synchronized time.
+#     system clock is close to synchronized time.
 #
-# Why checking only "Leap status: Normal" is insufficient:
+# Verification occurs at two levels:
 #
-#     Chrony can report:
+#     1. Internal Chrony verification
 #
-#         Leap status : Normal
+#        - `Leap status` must be `Normal`.
+#        - Chrony's reported system-time offset must be no greater than one
+#          second.
 #
-#     while still gradually correcting a very large clock difference.
+#     2. Independent external verification
 #
-# We therefore verify both:
+#        - The local UTC clock is compared with the HTTP Date header returned by
+#          GitHub.
+#        - The difference must be no greater than five seconds.
 #
-#     1. Leap status is Normal.
-#     2. System time offset is no greater than one second.
+# Why both checks are required:
 #
-# If the remaining offset is larger than one second, we run:
+#     Chrony can report a very small offset relative to its selected NTP source,
+#     but that does not independently prove that the resulting system time is
+#     correct relative to external services.
 #
-#     chronyc makestep
+#     GitHub Actions registration and OAuth authentication are time-sensitive,
+#     so an independent external verification protects against false-positive
+#     synchronization reports.
 #
-# This immediately applies the outstanding clock correction rather than waiting
-# for Chrony to adjust it gradually.
+# Recovery:
+#
+#     If Chrony has a valid source but reports an offset greater than one second,
+#     this function runs:
+#
+#         chronyc makestep
+#
+#     This applies the remaining clock correction immediately instead of waiting
+#     for Chrony to adjust the clock gradually.
+#
+# Return codes:
+#
+#     0 = Chrony and external clock verification succeeded
+#     1 = general synchronization failure
+#     other standardized Stoleus exit codes may be returned by shared helpers
 # ==============================================================================
 verify_chrony_synchronization() {
 
     local maximum_attempts=10
     local current_attempt=1
-    local maximum_offset_seconds="1.0"
 
-    local tracking_output
-    local leap_status
-    local system_time_offset
-    local absolute_offset
+    local maximum_chrony_offset_seconds="1.0"
+    local maximum_external_skew_seconds="5"
+
+    local tracking_output=""
+    local leap_status=""
+    local system_time_offset=""
+    local absolute_offset=""
 
 
-    require_root || return 1
-    require_command "chronyc" || return 1
-    require_command "awk" || return 1
+    require_root || return "${STOLEUS_EXIT_PERMISSION:-5}"
+
+    require_command "chronyc" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+    require_command "awk" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+    require_command "sleep" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
 
 
     log_info "Waiting for Chrony synchronization..."
 
 
     while (( current_attempt <= maximum_attempts )); do
+
+        # ----------------------------------------------------------------------
+        # Reset values so data from a previous attempt cannot be reused.
+        # ----------------------------------------------------------------------
+        tracking_output=""
+        leap_status=""
+        system_time_offset=""
+        absolute_offset=""
+
 
         # ----------------------------------------------------------------------
         # Read the complete Chrony tracking report once per attempt.
@@ -69,7 +108,7 @@ verify_chrony_synchronization() {
             #
             #     Leap status     : Normal
             #
-            # Output:
+            # Result:
             #
             #     Normal
             # ------------------------------------------------------------------
@@ -77,7 +116,12 @@ verify_chrony_synchronization() {
                 awk -F ':' '
                     /^Leap status/ {
                         value = $2
-                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+                        gsub(
+                            /^[[:space:]]+|[[:space:]]+$/,
+                            "",
+                            value
+                        )
+
                         print value
                         exit
                     }
@@ -91,13 +135,18 @@ verify_chrony_synchronization() {
             # Examples:
             #
             #     System time : 5.200000000 seconds slow of NTP time
-            #         -> -5.200000000
+            #
+            # becomes:
+            #
+            #     -5.200000000
+            #
+            # And:
             #
             #     System time : 0.300000000 seconds fast of NTP time
-            #         -> 0.300000000
             #
-            # The sign is not important for the threshold, but preserving it
-            # makes diagnostic output accurate.
+            # becomes:
+            #
+            #     0.300000000
             # ------------------------------------------------------------------
             system_time_offset="$(
                 awk '
@@ -113,6 +162,13 @@ verify_chrony_synchronization() {
                     }
                 ' <<< "$tracking_output"
             )"
+
+
+            log_debug \
+                "Chrony leap status on attempt ${current_attempt}: ${leap_status:-unavailable}"
+
+            log_debug \
+                "Chrony system-time offset on attempt ${current_attempt}: ${system_time_offset:-unavailable}"
 
 
             # ------------------------------------------------------------------
@@ -137,7 +193,7 @@ verify_chrony_synchronization() {
 
 
                 # --------------------------------------------------------------
-                # The server is healthy only when:
+                # Chrony's internal state is acceptable only when:
                 #
                 #     Leap status = Normal
                 #     absolute offset <= 1 second
@@ -145,39 +201,69 @@ verify_chrony_synchronization() {
                 if [[ "$leap_status" == "Normal" ]] &&
                    awk \
                        -v offset="$absolute_offset" \
-                       -v maximum="$maximum_offset_seconds" \
+                       -v maximum="$maximum_chrony_offset_seconds" \
                        'BEGIN { exit !(offset <= maximum) }'; then
 
-                    log_success \
-                        "Chrony is synchronized; system-time offset is ${absolute_offset} seconds."
+                    log_info \
+                        "Chrony internal synchronization is valid; system-time offset is ${absolute_offset} seconds."
 
-                    return 0
+
+                    # ----------------------------------------------------------
+                    # Independently compare local UTC time with GitHub.
+                    #
+                    # Chrony's internal status alone is not accepted as final
+                    # proof that the system clock is correct.
+                    # ----------------------------------------------------------
+                    if verify_remote_clock_skew \
+                        "https://github.com" \
+                        "$maximum_external_skew_seconds"; then
+
+                        log_success \
+                            "Chrony synchronization verified internally and against external time."
+
+                        return "${STOLEUS_EXIT_SUCCESS:-0}"
+                    fi
+
+
+                    local external_verification_exit_code=$?
+
+
+                    log_error \
+                        "Chrony reported synchronization, but external clock verification failed."
+
+                    return "$external_verification_exit_code"
                 fi
 
 
                 # --------------------------------------------------------------
-                # Chrony has a valid source, but the local clock is still far
-                # away from synchronized time.
+                # Chrony has a valid synchronization source, but the system clock
+                # still differs too much from Chrony's selected time source.
                 #
-                # Apply the outstanding correction immediately.
+                # Apply the correction immediately.
                 # --------------------------------------------------------------
                 if [[ "$leap_status" == "Normal" ]] &&
                    awk \
                        -v offset="$absolute_offset" \
-                       -v maximum="$maximum_offset_seconds" \
+                       -v maximum="$maximum_chrony_offset_seconds" \
                        'BEGIN { exit !(offset > maximum) }'; then
 
                     log_warning \
                         "System-time offset is ${absolute_offset} seconds; applying an immediate Chrony step."
 
 
-                    if ! chronyc makestep; then
+                    if ! chronyc makestep >/dev/null 2>&1; then
 
-                        log_error "Chrony failed to apply the clock correction."
+                        log_error \
+                            "Chrony failed to apply the immediate clock correction."
 
-                        return 1
+                        return "${STOLEUS_EXIT_FAILURE:-1}"
                     fi
+
+
+                    log_info \
+                        "Chrony accepted the immediate clock-correction request."
                 fi
+
             else
 
                 log_warning \
@@ -186,6 +272,9 @@ verify_chrony_synchronization() {
         fi
 
 
+        # ----------------------------------------------------------------------
+        # Wait before the next attempt unless this was the final attempt.
+        # ----------------------------------------------------------------------
         if (( current_attempt < maximum_attempts )); then
 
             log_info \
@@ -202,7 +291,7 @@ verify_chrony_synchronization() {
     log_error \
         "Chrony synchronization was not confirmed within the allowed time."
 
-    return 1
+    return "${STOLEUS_EXIT_VERIFICATION:-7}"
 }
 
 
@@ -216,19 +305,33 @@ verify_chrony_synchronization() {
 #         - installed
 #         - enabled at boot
 #         - currently running
-#         - synchronized
+#         - synchronized with a valid NTP source
+#         - independently verified against external UTC time
+#
+# The operation is successful only when both Chrony's internal state and the
+# external clock-skew check pass.
 # ==============================================================================
 setup_chrony() {
 
-    require_root || return 1
+    require_root ||
+        return "${STOLEUS_EXIT_PERMISSION:-5}"
+
 
     log_info "Starting Chrony setup."
 
-    ensure_package_installed "chrony" || return 1
 
-    ensure_service_enabled_and_running "chrony.service" || return 1
+    ensure_package_installed "chrony" ||
+        return "${STOLEUS_EXIT_FAILURE:-1}"
 
-    verify_chrony_synchronization || return 1
+
+    ensure_service_enabled_and_running "chrony.service" ||
+        return "${STOLEUS_EXIT_FAILURE:-1}"
+
+
+    verify_chrony_synchronization || return $?
+
 
     log_success "Chrony setup completed successfully."
+
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }

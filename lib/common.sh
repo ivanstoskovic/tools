@@ -83,7 +83,7 @@ source "${PROJECT_ROOT}/lib/text/output.sh"
 # ==============================================================================
 source "${PROJECT_ROOT}/lib/os/downloads.sh"
 source "${PROJECT_ROOT}/lib/os/archives.sh"
-
+source "${PROJECT_ROOT}/lib/os/time.sh"
 
 # ==============================================================================
 # Filesystem
