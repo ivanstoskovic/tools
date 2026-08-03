@@ -1065,9 +1065,8 @@ github_runner_configure() {
 # ==============================================================================
 #
 # Purpose:
-#     Install and start the systemd service for this specific GitHub Runner.
-#
-# The service is installed for GITHUB_RUNNER_USER, never for root.
+#     Locate or install the systemd service belonging to this GitHub Runner,
+#     then ensure that the exact service is enabled and running.
 #
 # Output:
 #     Prints the exact systemd service name to stdout.
@@ -1078,7 +1077,7 @@ github_runner_install_service() {
     local runner_user="${GITHUB_RUNNER_USER:-}"
     local runner_name="${GITHUB_RUNNER_NAME:-}"
 
-    local service_name
+    local service_name=""
     local -a matching_services=()
 
 
@@ -1087,9 +1086,10 @@ github_runner_install_service() {
 
     if [[ -z "$installation_directory" ]]; then
 
-        log_error "GitHub Runner installation directory has not been resolved."
+        log_error \
+            "GitHub Runner installation directory has not been resolved."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
@@ -1097,7 +1097,7 @@ github_runner_install_service() {
 
         log_error "GitHub Runner service user has not been provided."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
@@ -1105,12 +1105,21 @@ github_runner_install_service() {
 
         log_error "GitHub Runner name has not been resolved."
 
-        return 2
+        return "${STOLEUS_EXIT_USAGE:-2}"
     fi
 
 
-    require_root || return 1
-    require_command "systemctl" || return 1
+    require_root ||
+        return "${STOLEUS_EXIT_PERMISSION:-5}"
+
+    require_command "systemctl" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+    require_command "awk" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
+
+    require_command "grep" ||
+        return "${STOLEUS_EXIT_DEPENDENCY:-3}"
 
 
     if [[ ! -x "${installation_directory}/svc.sh" ]]; then
@@ -1118,22 +1127,46 @@ github_runner_install_service() {
         log_error \
             "GitHub Runner service script is missing: ${installation_directory}/svc.sh"
 
-        return 1
+        return "${STOLEUS_EXIT_CONFIGURATION:-6}"
     fi
 
 
     # --------------------------------------------------------------------------
-    # If the service is not installed yet, install it for the non-root account.
+    # Discover the existing service before attempting installation.
     #
-    # GitHub's svc.sh accepts the service user as its first argument:
-    #
-    #     ./svc.sh install deployer
+    # Do not use grep -q in a pipe while pipefail is enabled. grep -q may stop
+    # reading after the first match, causing an upstream command to receive
+    # SIGPIPE and making the pipeline appear to have failed.
     # --------------------------------------------------------------------------
-    if ! systemctl list-unit-files \
-        --type=service \
-        --no-legend |
-        awk '{print $1}' |
-        grep -Fq ".${runner_name}.service"; then
+    mapfile -t matching_services < <(
+        systemctl list-unit-files \
+            --type=service \
+            --no-legend |
+            awk '{print $1}' |
+            grep -F ".${runner_name}.service" || true
+    )
+
+
+    if (( ${#matching_services[@]} > 1 )); then
+
+        log_error \
+            "Multiple GitHub Runner services matched runner name: $runner_name"
+
+        printf 'Matched service: %s\n' \
+            "${matching_services[@]}" >&2
+
+        return "${STOLEUS_EXIT_CONFLICT:-8}"
+    fi
+
+
+    if (( ${#matching_services[@]} == 1 )); then
+
+        service_name="${matching_services[0]}"
+
+        log_info \
+            "GitHub Runner service is already installed: $service_name" >&2
+
+    else
 
         log_info \
             "Installing GitHub Runner service for user: $runner_user" >&2
@@ -1147,62 +1180,55 @@ github_runner_install_service() {
 
             log_error "Failed to install GitHub Runner service."
 
-            return 1
+            return "${STOLEUS_EXIT_FAILURE:-1}"
         fi
-    else
 
-        log_info "GitHub Runner service is already installed." >&2
+
+        # ----------------------------------------------------------------------
+        # Discover the exact service created by svc.sh.
+        # ----------------------------------------------------------------------
+        mapfile -t matching_services < <(
+            systemctl list-unit-files \
+                --type=service \
+                --no-legend |
+                awk '{print $1}' |
+                grep -F ".${runner_name}.service" || true
+        )
+
+
+        if (( ${#matching_services[@]} == 0 )); then
+
+            log_error \
+                "GitHub Runner service was installed but could not be located."
+
+            return "${STOLEUS_EXIT_VERIFICATION:-7}"
+        fi
+
+
+        if (( ${#matching_services[@]} > 1 )); then
+
+            log_error \
+                "Multiple GitHub Runner services matched runner name after installation: $runner_name"
+
+            return "${STOLEUS_EXIT_CONFLICT:-8}"
+        fi
+
+
+        service_name="${matching_services[0]}"
     fi
 
 
-    # --------------------------------------------------------------------------
-    # Find the exact service whose final component matches the generated runner
-    # name.
-    #
-    # Example:
-    #
-    #     actions.runner.owner-repository.stoleusstage-noteverbal.service
-    # --------------------------------------------------------------------------
-    mapfile -t matching_services < <(
-        systemctl list-unit-files \
-            --type=service \
-            --no-legend |
-            awk '{print $1}' |
-            grep -F ".${runner_name}.service" || true
-    )
-
-
-    if (( ${#matching_services[@]} == 0 )); then
-
-        log_error \
-            "GitHub Runner service could not be located for runner: $runner_name"
-
-        return 1
-    fi
-
-
-    if (( ${#matching_services[@]} > 1 )); then
-
-        log_error \
-            "Multiple GitHub Runner services matched runner name: $runner_name"
-
-        return 1
-    fi
-
-
-    service_name="${matching_services[0]}"
-
-
-    ensure_service_enabled_and_running "$service_name" >&2 || return 1
+    ensure_service_enabled_and_running "$service_name" >&2 ||
+        return "${STOLEUS_EXIT_VERIFICATION:-7}"
 
 
     log_success \
-        "GitHub Runner service installed and running: $service_name" >&2
+        "GitHub Runner service is installed and running: $service_name" >&2
 
 
     printf '%s\n' "$service_name"
 
-    return 0
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
 
 
