@@ -24,27 +24,43 @@ APT_METADATA_UPDATED=0
 # ==============================================================================
 #
 # Purpose:
-#     Verify that the current process is running as root.
+#     Verify that the current command is running with root privileges.
 #
-# `$EUID`
-#     Effective user ID of the current process.
+# Root privileges are required for operations such as:
 #
-# Root always has:
+#     - installing packages;
+#     - enabling or starting systemd services;
+#     - modifying protected system files;
+#     - creating directories under /opt;
+#     - changing firewall configuration.
 #
-#     EUID = 0
+# Return codes:
 #
-# This function is kept under the name `require_root` because it already exists
-# in the current Stoleus implementation.
+#     0
+#         The current process is running as root.
+#
+#     STOLEUS_EXIT_PERMISSION
+#         The current process is not running as root.
 # ==============================================================================
 require_root() {
 
-    if [[ "$EUID" -ne 0 ]]; then
+    # --------------------------------------------------------------------------
+    # EUID is the effective user ID of the current Bash process.
+    #
+    # Root always has:
+    #
+    #     EUID = 0
+    # --------------------------------------------------------------------------
+    if (( EUID != 0 )); then
 
         log_error "This command requires root privileges."
         log_error "Run it with sudo."
 
-        return 1
+        return "${STOLEUS_EXIT_PERMISSION:-5}"
     fi
+
+
+    return "${STOLEUS_EXIT_SUCCESS:-0}"
 }
 
 # ==============================================================================

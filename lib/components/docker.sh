@@ -114,7 +114,7 @@ ensure_apt_keyring_directory() {
     local keyring_directory="/etc/apt/keyrings"
 
 
-    require_root || return 1
+    require_root || return $?
     require_command "install" || return 1
 
 
@@ -173,7 +173,7 @@ remove_legacy_docker_repository() {
     local official_repository_url="https://download.docker.com/linux/ubuntu"
 
 
-    require_root || return 1
+    require_root || return $?
 
 
     if [[ ! -e "$legacy_repository_file" ]]; then
@@ -261,7 +261,7 @@ configure_docker_repository() {
     local repository_file="/etc/apt/sources.list.d/docker.sources"
 
 
-    require_root || return 1
+    require_root || return $?
 
     ensure_package_installed "ca-certificates" || return 1
     ensure_package_installed "curl" || return 1
@@ -581,7 +581,7 @@ verify_docker_installation() {
 # ==============================================================================
 setup_docker() {
 
-    require_root || return 1
+    require_root || return $?
 
     log_info "Starting Docker setup."
 

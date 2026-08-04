@@ -164,7 +164,7 @@ print_health_summary() {
 #
 #     stoleus health
 #
-# lib/common.sh calls this function after sourcing this command file.
+# lib/core/dispatcher.sh calls this function after sourcing this command file.
 # ==============================================================================
 command_main() {
 

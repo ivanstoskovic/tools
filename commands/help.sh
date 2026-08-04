@@ -14,7 +14,7 @@
 #
 # from:
 #
-#     lib/common.sh
+#     lib/core/dispatcher.sh
 #
 # Every command file exposes the same public function:
 #
@@ -53,7 +53,7 @@ set -Eeuo pipefail
 #
 # This is the entry function for the `help` command.
 #
-# The dispatcher in lib/common.sh expects every command implementation to
+# The dispatcher in lib/core/dispatcher.sh expects every command implementation to
 # provide a function with this exact name.
 #
 # Current command implementations include:

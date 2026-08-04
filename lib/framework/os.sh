@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Stoleus Tools - Setup Compatibility Loader
+# Stoleus Tools - Public Operating-System API
 # ==============================================================================
 #
-# commands/setup.sh currently sources this file.
-#
-# Component loading and registration now belong to:
-#
-#     lib/components/index.sh
+# Purpose:
+#     Declare the supported public API of the Operating-System module.
 # ==============================================================================
-
 set -Eeuo pipefail
 
 
-source "${PROJECT_ROOT}/lib/components/index.sh"
+framework_register_api \
+    "os" \
+    download_file \
+    extract_tar_gz \
+    verify_remote_clock_skew

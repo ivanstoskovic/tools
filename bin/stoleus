@@ -151,42 +151,8 @@ readonly PROJECT_ROOT="$(
 )"
 
 
-# ------------------------------------------------------------------------------
-# Load shared Bash functions.
-#
-# source
-#     Reads another Bash file and executes it inside the CURRENT shell.
-#
-# This loads:
-#
-#     lib/common.sh
-#
-# and makes functions such as:
-#
-#     run_command
-#     print_error
-#     read_version
-#
-# available here.
-# ------------------------------------------------------------------------------
-source "${PROJECT_ROOT}/lib/common.sh"
-source "${PROJECT_ROOT}/lib/exit_codes.sh"
+source "${PROJECT_ROOT}/lib/bootstrap.sh"
 
-# ------------------------------------------------------------------------------
-# Load the generic pipeline execution engine.
-#
-# The pipeline library is used by workflows that execute named steps in order,
-# including:
-#
-#     - server setup
-#     - deployments
-#     - backups
-#     - restores
-#     - repair operations
-#
-# Loading it here makes pipeline functions available to every Stoleus command.
-# ------------------------------------------------------------------------------
-source "${PROJECT_ROOT}/lib/pipeline.sh"
 
 # ==============================================================================
 # main

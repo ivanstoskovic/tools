@@ -238,7 +238,7 @@ verify_firewall_configuration() {
 # ==============================================================================
 setup_firewall() {
 
-    require_root || return 1
+    require_root || return $?
 
     log_info "Starting firewall setup."
 

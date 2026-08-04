@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Stoleus Tools - Setup Compatibility Loader
+# Stoleus Tools - Core Module
 # ==============================================================================
 #
-# commands/setup.sh currently sources this file.
+# Purpose:
+#     Load core application services.
 #
-# Component loading and registration now belong to:
+# Core services currently include:
 #
-#     lib/components/index.sh
+#     - version access;
+#     - command dispatching.
 # ==============================================================================
 
 set -Eeuo pipefail
 
 
-source "${PROJECT_ROOT}/lib/components/index.sh"
+source "${PROJECT_ROOT}/lib/core/version.sh"
+source "${PROJECT_ROOT}/lib/core/dispatcher.sh"

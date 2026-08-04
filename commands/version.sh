@@ -14,7 +14,7 @@
 #
 # from:
 #
-#     lib/common.sh
+#     lib/core/dispatcher.sh
 #
 # Just like commands/help.sh, this file exposes:
 #
@@ -58,7 +58,7 @@ set -Eeuo pipefail
 #
 # which is defined inside:
 #
-#     lib/common.sh
+#     lib/core/version.sh
 #
 # That function reads the value from:
 #

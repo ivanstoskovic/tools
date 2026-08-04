@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Stoleus Tools - Setup Compatibility Loader
+# Stoleus Tools - Operating-System Module
 # ==============================================================================
 #
-# commands/setup.sh currently sources this file.
-#
-# Component loading and registration now belong to:
-#
-#     lib/components/index.sh
+# Purpose:
+#     Load operating-system integration helpers.
 # ==============================================================================
 
 set -Eeuo pipefail
 
 
-source "${PROJECT_ROOT}/lib/components/index.sh"
+source "${PROJECT_ROOT}/lib/os/downloads.sh"
+source "${PROJECT_ROOT}/lib/os/archives.sh"
+source "${PROJECT_ROOT}/lib/os/time.sh"

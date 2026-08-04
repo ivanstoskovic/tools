@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Stoleus Tools - Setup Compatibility Loader
+# Stoleus Tools - Process Module
 # ==============================================================================
 #
-# commands/setup.sh currently sources this file.
-#
-# Component loading and registration now belong to:
-#
-#     lib/components/index.sh
+# Purpose:
+#     Load process execution, timing, and lifecycle helpers.
 # ==============================================================================
 
 set -Eeuo pipefail
 
 
-source "${PROJECT_ROOT}/lib/components/index.sh"
+source "${PROJECT_ROOT}/lib/process/execution.sh"

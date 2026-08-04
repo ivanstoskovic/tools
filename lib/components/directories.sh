@@ -39,7 +39,7 @@ ensure_directory() {
     local directory_mode="${4:-}"
 
 
-    require_root || return 1
+    require_root || return $?
     require_command "install" || return 1
     require_command "chown" || return 1
     require_command "chmod" || return 1
@@ -279,7 +279,7 @@ setup_application_directories() {
     local directory_path
 
 
-    require_root || return 1
+    require_root || return $?
 
     log_info "Starting application-directory setup."
 

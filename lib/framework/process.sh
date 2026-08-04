@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Stoleus Tools - Setup Compatibility Loader
+# Stoleus Tools - Public Process API
 # ==============================================================================
 #
-# commands/setup.sh currently sources this file.
-#
-# Component loading and registration now belong to:
-#
-#     lib/components/index.sh
+# Purpose:
+#     Declare the supported public API of the Process module.
 # ==============================================================================
-
 set -Eeuo pipefail
 
 
-source "${PROJECT_ROOT}/lib/components/index.sh"
+framework_register_api \
+    "process" \
+    print_step_failure \
+    print_step_success \
+    run_with_log_context
