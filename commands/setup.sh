@@ -23,7 +23,7 @@
 #
 # The actual setup logic lives in:
 #
-#     lib/setup.sh
+#     lib/components/index.sh
 # ==============================================================================
 
 
@@ -44,7 +44,7 @@ set -Eeuo pipefail
 #
 # become available.
 # ------------------------------------------------------------------------------
-source "${PROJECT_ROOT}/lib/setup.sh"
+source "${PROJECT_ROOT}/lib/components/index.sh"
 
 
 # ==============================================================================
