@@ -7,7 +7,7 @@
 # Purpose:
 #     Assemble and initialize the Stoleus Framework kernel.
 #
-# Kernel metadata pipeline:
+# Kernel pipeline:
 #
 #     Runtime
 #         ↓
@@ -20,6 +20,8 @@
 #     Resolver
 #         ↓
 #     Planning
+#         ↓
+#     Lifecycle
 #         ↓
 #     Execution
 #
@@ -98,13 +100,16 @@ fi
 #     Stores validated immutable PluginDefinitions.
 #
 # resolver
-#     Resolves plugin and dependency references against the Registry.
+#     Resolves plugin and dependency references.
 #
 # planning
-#     Produces immutable execution plans from resolved references.
+#     Produces immutable ExecutionPlans.
+#
+# lifecycle
+#     Loads plugin implementations and invokes lifecycle entry points.
 #
 # execution
-#     Executes previously produced plans.
+#     Executes frozen plan steps through the Lifecycle subsystem.
 # ==============================================================================
 
 source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
@@ -113,6 +118,7 @@ source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
+source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
 source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 
 
@@ -123,15 +129,15 @@ source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 # Purpose:
 #     Initialize every kernel subsystem in dependency order.
 #
-# Initialization does not:
+# Initialization alone does not:
 #
 #     - scan plugin directories;
 #     - parse manifests;
-#     - build definitions;
 #     - import Registry entries;
 #     - resolve plugins;
-#     - build execution plans;
-#     - execute infrastructure operations.
+#     - build plans;
+#     - load implementations;
+#     - execute lifecycle functions.
 # ==============================================================================
 
 stoleus_kernel_initialize() {
@@ -147,6 +153,7 @@ stoleus_kernel_initialize() {
     stoleus_registry_initialize || return $?
     stoleus_resolver_initialize || return $?
     stoleus_planning_initialize || return $?
+    stoleus_lifecycle_initialize || return $?
     stoleus_execution_initialize || return $?
 
 
