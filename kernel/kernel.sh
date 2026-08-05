@@ -7,7 +7,7 @@
 # Purpose:
 #     Assemble and initialize the Stoleus Framework kernel.
 #
-# Kernel processing flow:
+# Kernel metadata pipeline:
 #
 #     Runtime
 #         ↓
@@ -17,12 +17,14 @@
 #         ↓
 #     Registry
 #         ↓
+#     Resolver
+#         ↓
 #     Planning
 #         ↓
 #     Execution
 #
-# The current kernel is developed alongside the existing Stoleus
-# implementation. It is not yet loaded by bin/stoleus.
+# The new kernel is developed alongside the existing production implementation.
+# It is not yet loaded by bin/stoleus.
 # ==============================================================================
 
 set -Eeuo pipefail
@@ -90,22 +92,26 @@ fi
 #     Locates plugin candidates and produces DiscoveryRecords.
 #
 # definition
-#     Converts DiscoveryRecords and manifests into PluginDefinitions.
+#     Converts manifests into normalized PluginDefinitions.
 #
 # registry
-#     Will store validated immutable definitions.
+#     Stores validated immutable PluginDefinitions.
+#
+# resolver
+#     Resolves plugin and dependency references against the Registry.
 #
 # planning
-#     Will produce immutable execution plans.
+#     Produces immutable execution plans from resolved references.
 #
 # execution
-#     Will execute previously produced plans.
+#     Executes previously produced plans.
 # ==============================================================================
 
 source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 
@@ -122,7 +128,9 @@ source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 #     - scan plugin directories;
 #     - parse manifests;
 #     - build definitions;
-#     - create execution plans;
+#     - import Registry entries;
+#     - resolve plugins;
+#     - build execution plans;
 #     - execute infrastructure operations.
 # ==============================================================================
 
@@ -137,6 +145,7 @@ stoleus_kernel_initialize() {
     stoleus_discovery_initialize || return $?
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?
+    stoleus_resolver_initialize || return $?
     stoleus_planning_initialize || return $?
     stoleus_execution_initialize || return $?
 
