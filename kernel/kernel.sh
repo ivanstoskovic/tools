@@ -5,21 +5,24 @@
 # ==============================================================================
 #
 # Purpose:
-#     Assemble and initialize the framework kernel.
+#     Assemble and initialize the Stoleus Framework kernel.
 #
-# The kernel coordinates the framework subsystems but does not contain
-# infrastructure automation logic.
+# Kernel processing flow:
 #
-# Kernel subsystems:
+#     Runtime
+#         ↓
+#     Discovery
+#         ↓
+#     Definition
+#         ↓
+#     Registry
+#         ↓
+#     Planning
+#         ↓
+#     Execution
 #
-#     runtime
-#     registry
-#     discovery
-#     planning
-#     execution
-#
-# This kernel is currently built alongside the existing Stoleus implementation.
-# It is not yet loaded by bin/stoleus.
+# The current kernel is developed alongside the existing Stoleus
+# implementation. It is not yet loaded by bin/stoleus.
 # ==============================================================================
 
 set -Eeuo pipefail
@@ -42,6 +45,7 @@ STOLEUS_KERNEL_LOADED="true"
 # ==============================================================================
 
 if [[ -z "${PROJECT_ROOT:-}" ]]; then
+
     printf '%s\n' \
         "ERROR: PROJECT_ROOT must be defined before loading the Stoleus kernel." \
         >&2
@@ -51,6 +55,7 @@ fi
 
 
 if [[ ! -d "$PROJECT_ROOT" ]]; then
+
     printf '%s\n' \
         "ERROR: PROJECT_ROOT does not exist: $PROJECT_ROOT" \
         >&2
@@ -63,6 +68,7 @@ STOLEUS_KERNEL_ROOT="${PROJECT_ROOT}/kernel"
 
 
 if [[ ! -d "$STOLEUS_KERNEL_ROOT" ]]; then
+
     printf '%s\n' \
         "ERROR: Stoleus kernel directory does not exist: $STOLEUS_KERNEL_ROOT" \
         >&2
@@ -75,27 +81,31 @@ fi
 # Kernel Subsystems
 # ==============================================================================
 #
-# Loading order is intentional:
+# Loading order is intentional.
 #
-#     runtime
-#         Provides the runtime state used by all later subsystems.
+# runtime
+#     Owns process-level runtime state.
 #
-#     registry
-#         Owns normalized framework definitions.
+# discovery
+#     Locates plugin candidates and produces DiscoveryRecords.
 #
-#     discovery
-#         Discovers candidate plugins that can later become definitions.
+# definition
+#     Converts DiscoveryRecords and manifests into PluginDefinitions.
 #
-#     planning
-#         Produces immutable execution plans from registered definitions.
+# registry
+#     Will store validated immutable definitions.
 #
-#     execution
-#         Executes previously produced plans.
+# planning
+#     Will produce immutable execution plans.
+#
+# execution
+#     Will execute previously produced plans.
 # ==============================================================================
 
 source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
-source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
+source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
+source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 
@@ -107,15 +117,15 @@ source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
 # Purpose:
 #     Initialize every kernel subsystem in dependency order.
 #
-# This function currently initializes subsystem state only.
+# Initialization does not:
 #
-# It does not:
-#
-#     - discover plugins;
-#     - load manifests;
-#     - build execution plans;
-#     - execute infrastructure changes.
+#     - scan plugin directories;
+#     - parse manifests;
+#     - build definitions;
+#     - create execution plans;
+#     - execute infrastructure operations.
 # ==============================================================================
+
 stoleus_kernel_initialize() {
 
     if [[ "${STOLEUS_KERNEL_INITIALIZED:-false}" == "true" ]]; then
@@ -124,8 +134,9 @@ stoleus_kernel_initialize() {
 
 
     stoleus_runtime_initialize || return $?
-    stoleus_registry_initialize || return $?
     stoleus_discovery_initialize || return $?
+    stoleus_definition_initialize || return $?
+    stoleus_registry_initialize || return $?
     stoleus_planning_initialize || return $?
     stoleus_execution_initialize || return $?
 
