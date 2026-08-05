@@ -136,6 +136,9 @@ source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/contract/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/contract/registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/service/registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/service/resolver.sh"
+source "${STOLEUS_KERNEL_ROOT}/service/runtime.sh"
 source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
@@ -188,6 +191,9 @@ stoleus_kernel_initialize() {
     stoleus_resolver_initialize || return $?
     stoleus_contract_definition_initialize || return $?
     stoleus_contract_registry_initialize || return $?
+    stoleus_service_registry_initialize || return $?
+    stoleus_service_resolver_initialize || return $?
+    stoleus_service_runtime_initialize || return $?
     stoleus_plugin_initialize || return $?
     stoleus_planning_initialize || return $?
     stoleus_lifecycle_initialize || return $?
@@ -378,6 +384,38 @@ stoleus_kernel_bootstrap() {
 
         stoleus_kernel_record_bootstrap_failure \
             "contract-registry" \
+            "$exit_code"
+
+        return "$exit_code"
+    fi
+
+
+    STOLEUS_KERNEL_BOOTSTRAP_STAGE="services"
+
+
+    if stoleus_service_registry_import_plugins; then
+        exit_code=0
+    else
+        exit_code=$?
+
+        stoleus_kernel_record_bootstrap_failure \
+            "services" \
+            "$exit_code"
+
+        return "$exit_code"
+    fi
+
+
+    STOLEUS_KERNEL_BOOTSTRAP_STAGE="service-resolution"
+
+
+    if stoleus_service_resolver_validate_registry; then
+        exit_code=0
+    else
+        exit_code=$?
+
+        stoleus_kernel_record_bootstrap_failure \
+            "service-resolution" \
             "$exit_code"
 
         return "$exit_code"

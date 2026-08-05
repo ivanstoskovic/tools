@@ -1033,6 +1033,38 @@ stoleus_api_register_defaults() {
     stoleus_api_register contract-registry stoleus_contract_registry_freeze internal internal kernel/contract/registry.sh
     stoleus_api_register contract-registry stoleus_contract_registry_reset public stable kernel/contract/registry.sh
 
+    # Service Registry
+    stoleus_api_register service-registry stoleus_service_registry_initialize internal internal kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_import_plugins internal internal kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_contains public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_get_count public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_get_field public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_get_provider public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_get_operation_binding public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_list public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_list_providers public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_is_frozen public experimental kernel/service/registry.sh
+    stoleus_api_register service-registry stoleus_service_registry_reset public experimental kernel/service/registry.sh
+
+    # Service Provider Resolver
+    stoleus_api_register service-resolver stoleus_service_resolver_initialize internal internal kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_resolve public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_get_provider public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_get_provider_plugin public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_get_operation_binding public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_validate_registry internal internal kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_get_resolved public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_is_resolved public experimental kernel/service/resolver.sh
+    stoleus_api_register service-resolver stoleus_service_resolver_reset public experimental kernel/service/resolver.sh
+
+    # Service Invocation Runtime
+    stoleus_api_register service-runtime stoleus_service_runtime_initialize internal internal kernel/service/runtime.sh
+    stoleus_api_register service-runtime stoleus_service_call public experimental kernel/service/runtime.sh
+    stoleus_api_register service-runtime stoleus_service_get_provider public experimental kernel/service/runtime.sh
+    stoleus_api_register service-runtime stoleus_service_get_operation public experimental kernel/service/runtime.sh
+    stoleus_api_register service-runtime stoleus_service_runtime_get_last_call public experimental kernel/service/runtime.sh
+    stoleus_api_register service-runtime stoleus_service_runtime_reset public experimental kernel/service/runtime.sh
+
     # Resolver
     stoleus_api_register resolver stoleus_resolver_initialize internal internal kernel/resolver/resolver.sh
     stoleus_api_register resolver stoleus_resolver_resolve public stable kernel/resolver/resolver.sh
