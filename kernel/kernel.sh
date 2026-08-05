@@ -129,6 +129,7 @@ fi
 # ==============================================================================
 
 source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
+source "${STOLEUS_KERNEL_ROOT}/metadata/collection.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
@@ -178,6 +179,7 @@ stoleus_kernel_initialize() {
 
 
     stoleus_runtime_initialize || return $?
+    stoleus_metadata_initialize || return $?
     stoleus_discovery_initialize || return $?
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?
