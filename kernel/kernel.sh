@@ -133,6 +133,7 @@ source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
+source "${STOLEUS_KERNEL_ROOT}/contract/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
@@ -181,6 +182,7 @@ stoleus_kernel_initialize() {
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?
     stoleus_resolver_initialize || return $?
+    stoleus_contract_definition_initialize || return $?
     stoleus_plugin_initialize || return $?
     stoleus_planning_initialize || return $?
     stoleus_lifecycle_initialize || return $?
@@ -338,6 +340,22 @@ stoleus_kernel_bootstrap() {
 
         stoleus_kernel_record_bootstrap_failure \
             "resolve" \
+            "$exit_code"
+
+        return "$exit_code"
+    fi
+
+
+    STOLEUS_KERNEL_BOOTSTRAP_STAGE="contracts"
+
+
+    if stoleus_contract_definition_build_all; then
+        exit_code=0
+    else
+        exit_code=$?
+
+        stoleus_kernel_record_bootstrap_failure \
+            "contracts" \
             "$exit_code"
 
         return "$exit_code"
