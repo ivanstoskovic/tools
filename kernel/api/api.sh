@@ -951,6 +951,15 @@ stoleus_api_register_defaults() {
     stoleus_api_register context stoleus_context_get_generation public experimental kernel/context/context.sh
     stoleus_api_register context stoleus_context_reset public experimental kernel/context/context.sh
 
+    # Platform Detection
+    stoleus_api_register platform stoleus_platform_initialize internal internal kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_detect public experimental kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_apply_context public experimental kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_refresh public experimental kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_get public experimental kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_get_status public experimental kernel/platform/platform.sh
+    stoleus_api_register platform stoleus_platform_reset public experimental kernel/platform/platform.sh
+
     # Runtime
     stoleus_api_register runtime stoleus_runtime_initialize internal internal kernel/runtime/runtime.sh
 

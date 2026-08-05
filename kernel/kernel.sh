@@ -130,6 +130,7 @@ fi
 
 source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
 source "${STOLEUS_KERNEL_ROOT}/context/context.sh"
+source "${STOLEUS_KERNEL_ROOT}/platform/platform.sh"
 source "${STOLEUS_KERNEL_ROOT}/metadata/collection.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
@@ -186,6 +187,7 @@ stoleus_kernel_initialize() {
 
     stoleus_runtime_initialize || return $?
     stoleus_context_initialize || return $?
+    stoleus_platform_initialize || return $?
     stoleus_metadata_initialize || return $?
     stoleus_discovery_initialize || return $?
     stoleus_definition_initialize || return $?
@@ -290,6 +292,25 @@ stoleus_kernel_bootstrap() {
 
         stoleus_kernel_record_bootstrap_failure \
             "initialize" \
+            "$exit_code"
+
+        return "$exit_code"
+    fi
+
+
+    STOLEUS_KERNEL_BOOTSTRAP_STAGE="platform-context"
+
+
+    if stoleus_platform_detect &&
+       stoleus_platform_apply_context "preserve"; then
+
+        exit_code=0
+
+    else
+        exit_code=$?
+
+        stoleus_kernel_record_bootstrap_failure \
+            "platform-context" \
             "$exit_code"
 
         return "$exit_code"

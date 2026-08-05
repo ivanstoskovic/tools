@@ -13,6 +13,12 @@ context	stoleus_context_clear_provider_override	public	experimental	kernel/conte
 context	stoleus_context_list_provider_overrides	public	experimental	kernel/context/context.sh
 context	stoleus_context_get_generation	public	experimental	kernel/context/context.sh
 context	stoleus_context_reset	public	experimental	kernel/context/context.sh
+platform	stoleus_platform_detect	public	experimental	kernel/platform/platform.sh
+platform	stoleus_platform_apply_context	public	experimental	kernel/platform/platform.sh
+platform	stoleus_platform_refresh	public	experimental	kernel/platform/platform.sh
+platform	stoleus_platform_get	public	experimental	kernel/platform/platform.sh
+platform	stoleus_platform_get_status	public	experimental	kernel/platform/platform.sh
+platform	stoleus_platform_reset	public	experimental	kernel/platform/platform.sh
 metadata	stoleus_metadata_initialize	public	stable	kernel/metadata/collection.sh
 metadata	stoleus_metadata_collection_create	public	stable	kernel/metadata/collection.sh
 metadata	stoleus_metadata_collection_exists	public	stable	kernel/metadata/collection.sh
