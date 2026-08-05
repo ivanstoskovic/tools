@@ -937,6 +937,20 @@ stoleus_api_register_defaults() {
     stoleus_api_register kernel stoleus_kernel_is_ready public stable kernel/kernel.sh
     stoleus_api_register kernel stoleus_kernel_get_status public stable kernel/kernel.sh
 
+    # Runtime Context
+    stoleus_api_register context stoleus_context_initialize internal internal kernel/context/context.sh
+    stoleus_api_register context stoleus_context_set public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_get public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_contains public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_list public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_matches_conditions internal internal kernel/context/context.sh
+    stoleus_api_register context stoleus_context_set_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_get_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_clear_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_list_provider_overrides public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_get_generation public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_reset public experimental kernel/context/context.sh
+
     # Runtime
     stoleus_api_register runtime stoleus_runtime_initialize internal internal kernel/runtime/runtime.sh
 
@@ -983,6 +997,7 @@ stoleus_api_register_defaults() {
     stoleus_api_register plugin-manifest stoleus_plugin_requires_services dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_provides_service dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_service_operation dsl experimental kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_service_condition dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_lifecycle dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_end dsl stable kernel/definition/providers/bash.sh
 

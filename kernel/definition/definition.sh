@@ -70,6 +70,7 @@ declare -a STOLEUS_DEFINITION_CAPABILITIES=()
 declare -a STOLEUS_DEFINITION_REQUIRED_SERVICES=()
 declare -a STOLEUS_DEFINITION_PROVIDED_SERVICES=()
 declare -a STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS=()
+declare -a STOLEUS_DEFINITION_SERVICE_CONDITIONS=()
 declare -a STOLEUS_DEFINITION_MANIFEST_PATHS=()
 declare -a STOLEUS_DEFINITION_MANIFEST_PROVIDERS=()
 
@@ -131,6 +132,7 @@ stoleus_definition_reset() {
     STOLEUS_DEFINITION_REQUIRED_SERVICES=()
     STOLEUS_DEFINITION_PROVIDED_SERVICES=()
     STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS=()
+    STOLEUS_DEFINITION_SERVICE_CONDITIONS=()
     STOLEUS_DEFINITION_MANIFEST_PATHS=()
     STOLEUS_DEFINITION_MANIFEST_PROVIDERS=()
 
@@ -276,6 +278,7 @@ stoleus_definition_register() {
     local required_services="${15:-}"
     local provided_services="${16:-}"
     local service_operation_bindings="${17:-}"
+    local service_conditions="${18:-}"
 
 
     if stoleus_definition_is_frozen; then
@@ -432,6 +435,7 @@ stoleus_definition_register() {
     STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS+=(
         "$service_operation_bindings"
     )
+    STOLEUS_DEFINITION_SERVICE_CONDITIONS+=("$service_conditions")
 
     STOLEUS_DEFINITION_MANIFEST_PATHS+=("$manifest_path")
     STOLEUS_DEFINITION_MANIFEST_PROVIDERS+=("$manifest_provider")

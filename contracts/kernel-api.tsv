@@ -3,6 +3,16 @@ kernel	stoleus_kernel_initialize	public	stable	kernel/kernel.sh
 kernel	stoleus_kernel_bootstrap	public	stable	kernel/kernel.sh
 kernel	stoleus_kernel_is_ready	public	stable	kernel/kernel.sh
 kernel	stoleus_kernel_get_status	public	stable	kernel/kernel.sh
+context	stoleus_context_set	public	experimental	kernel/context/context.sh
+context	stoleus_context_get	public	experimental	kernel/context/context.sh
+context	stoleus_context_contains	public	experimental	kernel/context/context.sh
+context	stoleus_context_list	public	experimental	kernel/context/context.sh
+context	stoleus_context_set_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_get_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_clear_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_list_provider_overrides	public	experimental	kernel/context/context.sh
+context	stoleus_context_get_generation	public	experimental	kernel/context/context.sh
+context	stoleus_context_reset	public	experimental	kernel/context/context.sh
 metadata	stoleus_metadata_initialize	public	stable	kernel/metadata/collection.sh
 metadata	stoleus_metadata_collection_create	public	stable	kernel/metadata/collection.sh
 metadata	stoleus_metadata_collection_exists	public	stable	kernel/metadata/collection.sh
@@ -33,6 +43,7 @@ plugin-manifest	stoleus_plugin_capabilities	dsl	stable	kernel/definition/provide
 plugin-manifest	stoleus_plugin_requires_services	dsl	experimental	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_provides_service	dsl	experimental	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_service_operation	dsl	experimental	kernel/definition/providers/bash.sh
+plugin-manifest	stoleus_plugin_service_condition	dsl	experimental	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_lifecycle	dsl	stable	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_end	dsl	stable	kernel/definition/providers/bash.sh
 registry	stoleus_registry_contains	public	stable	kernel/registry/registry.sh

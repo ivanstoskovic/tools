@@ -89,6 +89,7 @@ stoleus_service_resolver_reset() {
     STOLEUS_SERVICE_RESOLVER_INDEX_BY_SERVICE=()
 
     STOLEUS_SERVICE_RESOLVER_VALIDATED="false"
+    STOLEUS_SERVICE_RESOLVER_CONTEXT_GENERATION="${STOLEUS_CONTEXT_GENERATION:-0}"
 
 
     return 0
@@ -214,6 +215,65 @@ stoleus_service_resolver_cache() {
 
 
 # ==============================================================================
+# stoleus_service_resolver_sync_context
+# ==============================================================================
+#
+# Purpose:
+#     Invalidate cached provider selections whenever runtime context or explicit
+#     provider overrides change.
+# ==============================================================================
+
+stoleus_service_resolver_sync_context() {
+
+    local current_generation="${STOLEUS_CONTEXT_GENERATION:-0}"
+
+
+    if [[ "${STOLEUS_SERVICE_RESOLVER_CONTEXT_GENERATION:-0}" == "$current_generation" ]]; then
+        return 0
+    fi
+
+
+    STOLEUS_SERVICE_RESOLVER_SERVICE_IDS=()
+    STOLEUS_SERVICE_RESOLVER_PROVIDER_PLUGIN_IDS=()
+    STOLEUS_SERVICE_RESOLVER_PROVIDER_KEYS=()
+    STOLEUS_SERVICE_RESOLVER_CONTRACT_VERSIONS=()
+    STOLEUS_SERVICE_RESOLVER_PRIORITIES=()
+    STOLEUS_SERVICE_RESOLVER_INDEX_BY_SERVICE=()
+
+    STOLEUS_SERVICE_RESOLVER_VALIDATED="false"
+    STOLEUS_SERVICE_RESOLVER_CONTEXT_GENERATION="$current_generation"
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_service_resolver_candidate_matches_context
+# ==============================================================================
+
+stoleus_service_resolver_candidate_matches_context() {
+
+    local service_id="${1:-}"
+    local provider_plugin_id="${2:-}"
+
+    local conditions=""
+
+
+    conditions="$(
+        stoleus_service_registry_get_field \
+            "${service_id}@${provider_plugin_id}" \
+            "conditions"
+    )" || return $?
+
+
+    stoleus_context_matches_conditions "$conditions"
+
+    return $?
+}
+
+
+# ==============================================================================
 # stoleus_service_resolver_resolve
 # ==============================================================================
 #
@@ -250,6 +310,10 @@ stoleus_service_resolver_resolve() {
 
     local tied_provider=""
     local candidate_count=0
+    local matching_candidate_count=0
+
+    local override_provider=""
+    local override_provider_key=""
 
 
     if [[ -z "$service_id" ]]; then
@@ -262,6 +326,7 @@ stoleus_service_resolver_resolve() {
 
 
     stoleus_service_resolver_require_registries || return $?
+    stoleus_service_resolver_sync_context || return $?
 
 
     if ! stoleus_contract_registry_contains "$service_id"; then
@@ -279,6 +344,70 @@ stoleus_service_resolver_resolve() {
         stoleus_service_resolver_get_provider "$service_id"
 
         return $?
+    fi
+
+
+    override_provider="$(
+        stoleus_context_get_provider_override "$service_id"
+    )" || return $?
+
+
+    if [[ -n "$override_provider" ]]; then
+
+        override_provider_key="${service_id}@${override_provider}"
+
+
+        if ! stoleus_service_registry_contains "$override_provider_key"; then
+
+            printf '%s\n' \
+                "ERROR: Provider override references an unregistered provider: ${override_provider_key}" \
+                >&2
+
+            return 6
+        fi
+
+
+        if ! stoleus_service_resolver_candidate_matches_context \
+            "$service_id" \
+            "$override_provider"; then
+
+            printf '%s\n' \
+                "ERROR: Provider override '${override_provider}' does not match runtime context for service '${service_id}'." \
+                >&2
+
+            return 6
+        fi
+
+
+        contract_version="$(
+            stoleus_service_registry_get_field \
+                "$override_provider_key" \
+                "contract-version"
+        )" || return $?
+
+
+        priority="$(
+            stoleus_service_registry_get_field \
+                "$override_provider_key" \
+                "priority"
+        )" || return $?
+
+
+        stoleus_service_resolver_cache \
+            "$service_id" \
+            "$override_provider" \
+            "$contract_version" \
+            "$priority" ||
+            return $?
+
+
+        printf '%s\t%s\t%s\t%s\n' \
+            "$service_id" \
+            "$override_provider" \
+            "$contract_version" \
+            "$priority"
+
+        return 0
     fi
 
 
@@ -300,6 +429,23 @@ stoleus_service_resolver_resolve() {
                 >&2
 
             return 6
+        fi
+
+
+        if stoleus_service_resolver_candidate_matches_context \
+            "$service_id" \
+            "$provider_plugin_id"; then
+
+            matching_candidate_count="$((matching_candidate_count + 1))"
+
+        else
+            match_exit_code=$?
+
+            if (( match_exit_code == 1 )); then
+                continue
+            fi
+
+            return "$match_exit_code"
         fi
 
 
@@ -334,10 +480,20 @@ stoleus_service_resolver_resolve() {
     fi
 
 
+    if (( matching_candidate_count == 0 )); then
+
+        printf '%s\n' \
+            "ERROR: No registered provider matches runtime context for service: ${service_id}" \
+            >&2
+
+        return 6
+    fi
+
+
     if [[ -n "$tied_provider" ]]; then
 
         printf '%s\n' \
-            "ERROR: Service '${service_id}' has multiple providers with highest priority ${selected_priority}: ${selected_provider}, ${tied_provider}" \
+            "ERROR: Service '${service_id}' has multiple context-compatible providers with highest priority ${selected_priority}: ${selected_provider}, ${tied_provider}" \
             >&2
 
         return 8

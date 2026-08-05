@@ -67,6 +67,9 @@ STOLEUS_MANIFEST_CAPABILITIES=""
 STOLEUS_MANIFEST_REQUIRED_SERVICES=""
 STOLEUS_MANIFEST_PROVIDED_SERVICES=""
 STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS=""
+STOLEUS_MANIFEST_SERVICE_CONDITIONS=""
+
+declare -A STOLEUS_MANIFEST_SERVICE_CONDITION_SET=()
 
 declare -A STOLEUS_MANIFEST_REQUIRED_SERVICE_SET=()
 declare -A STOLEUS_MANIFEST_PROVIDED_SERVICE_SET=()
@@ -97,6 +100,9 @@ stoleus_manifest_bash_reset() {
     STOLEUS_MANIFEST_REQUIRED_SERVICES=""
     STOLEUS_MANIFEST_PROVIDED_SERVICES=""
     STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS=""
+    STOLEUS_MANIFEST_SERVICE_CONDITIONS=""
+
+    STOLEUS_MANIFEST_SERVICE_CONDITION_SET=()
 
     STOLEUS_MANIFEST_REQUIRED_SERVICE_SET=()
     STOLEUS_MANIFEST_PROVIDED_SERVICE_SET=()
@@ -601,6 +607,111 @@ stoleus_plugin_service_operation() {
 
 
 # ==============================================================================
+# stoleus_plugin_service_condition
+# ==============================================================================
+#
+# Purpose:
+#     Declare one runtime-selection condition for a provided service.
+#
+# Arguments:
+#
+#     $1 = provided service ID
+#     $2 = context key
+#     $3 = required context value
+#
+# Normalized format:
+#
+#     service-id|context-key|context-value
+#
+# Multiple conditions are separated by semicolons.
+# ==============================================================================
+
+stoleus_plugin_service_condition() {
+
+    local service_id="${1:-}"
+    local context_key="${2:-}"
+    local expected_value="${3:-}"
+
+    local condition_key=""
+    local condition_record=""
+
+
+    stoleus_manifest_require_active || return $?
+
+
+    if [[ -z "$service_id" ||
+          -z "$context_key" ||
+          -z "$expected_value" ]]; then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_service_condition requires service ID, context key, and value." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ -z "${STOLEUS_MANIFEST_PROVIDED_SERVICE_SET[$service_id]+declared}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Service condition references a service not provided by this plugin: ${service_id}" \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ ! "$context_key" =~ ^[a-z][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid service condition key: ${context_key}" >&2
+
+        return 6
+    fi
+
+
+    if [[ "$expected_value" == *$'\n'* ||
+          "$expected_value" == *';'* ||
+          "$expected_value" == *'|'* ]]; then
+
+        printf '%s\n' \
+            "ERROR: Service condition value contains unsupported delimiters." \
+            >&2
+
+        return 6
+    fi
+
+
+    condition_key="${service_id}|${context_key}"
+
+
+    if [[ -n "${STOLEUS_MANIFEST_SERVICE_CONDITION_SET[$condition_key]+declared}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Duplicate service condition: ${condition_key}" >&2
+
+        return 8
+    fi
+
+
+    STOLEUS_MANIFEST_SERVICE_CONDITION_SET["$condition_key"]="true"
+
+    condition_record="${service_id}|${context_key}|${expected_value}"
+
+
+    if [[ -n "$STOLEUS_MANIFEST_SERVICE_CONDITIONS" ]]; then
+        STOLEUS_MANIFEST_SERVICE_CONDITIONS+=";"
+    fi
+
+
+    STOLEUS_MANIFEST_SERVICE_CONDITIONS+="$condition_record"
+
+
+    return 0
+}
+
+
+# ==============================================================================
 # stoleus_plugin_lifecycle
 # ==============================================================================
 #
@@ -815,7 +926,8 @@ stoleus_manifest_bash_load() {
         "$STOLEUS_MANIFEST_REMOVE_FUNCTION" \
         "$STOLEUS_MANIFEST_REQUIRED_SERVICES" \
         "$STOLEUS_MANIFEST_PROVIDED_SERVICES" \
-        "$STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS" ||
+        "$STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS" \
+        "$STOLEUS_MANIFEST_SERVICE_CONDITIONS" ||
         return $?
 
 

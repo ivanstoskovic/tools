@@ -174,6 +174,10 @@ stoleus_registry_create_collection() {
         "implementation" \
         "dependencies" \
         "capabilities" \
+        "required-services" \
+        "provided-services" \
+        "service-operation-bindings" \
+        "service-conditions" \
         "manifest" \
         "manifest-provider" \
         "install" \
@@ -684,6 +688,10 @@ stoleus_registry_append_definition() {
         "${STOLEUS_DEFINITION_IMPLEMENTATIONS[$definition_index]}" \
         "${STOLEUS_DEFINITION_DEPENDENCIES[$definition_index]}" \
         "${STOLEUS_DEFINITION_CAPABILITIES[$definition_index]}" \
+        "${STOLEUS_DEFINITION_REQUIRED_SERVICES[$definition_index]:-}" \
+        "${STOLEUS_DEFINITION_PROVIDED_SERVICES[$definition_index]:-}" \
+        "${STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS[$definition_index]:-}" \
+        "${STOLEUS_DEFINITION_SERVICE_CONDITIONS[$definition_index]:-}" \
         "${STOLEUS_DEFINITION_MANIFEST_PATHS[$definition_index]}" \
         "${STOLEUS_DEFINITION_MANIFEST_PROVIDERS[$definition_index]}" \
         "${STOLEUS_DEFINITION_INSTALL_FUNCTIONS[$definition_index]}" \
