@@ -40,6 +40,7 @@
 #     stoleus_api_list_subsystems
 #     stoleus_api_validate
 #     stoleus_api_write_snapshot
+#     stoleus_api_compare_snapshot
 #     stoleus_api_get_count
 #     stoleus_api_reset
 # ==============================================================================
@@ -593,6 +594,333 @@ stoleus_api_write_snapshot() {
 
 
 # ==============================================================================
+# stoleus_api_validate_snapshot
+# ==============================================================================
+#
+# Purpose:
+#     Validate the basic structure of one API compatibility snapshot.
+#
+# Arguments:
+#
+#     $1 = snapshot path
+#
+# Required header:
+#
+#     subsystem
+#     function
+#     visibility
+#     stability
+#     owner
+#
+# Fields are tab-separated.
+# ==============================================================================
+
+stoleus_api_validate_snapshot() {
+
+    local snapshot_path="${1:-}"
+    local expected_header=""
+    local actual_header=""
+
+    local line_number=0
+    local subsystem=""
+    local function_name=""
+    local visibility=""
+    local stability=""
+    local owner=""
+    local extra_field=""
+
+
+    if [[ -z "$snapshot_path" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API snapshot validation requires a path." >&2
+
+        return 2
+    fi
+
+
+    if [[ ! -f "$snapshot_path" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API compatibility snapshot does not exist: ${snapshot_path}" \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ ! -s "$snapshot_path" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API compatibility snapshot is empty: ${snapshot_path}" \
+            >&2
+
+        return 6
+    fi
+
+
+    expected_header=$'subsystem\tfunction\tvisibility\tstability\towner'
+
+    IFS= read -r actual_header < "$snapshot_path" || true
+
+
+    if [[ "$actual_header" != "$expected_header" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API compatibility snapshot has an invalid header: ${snapshot_path}" \
+            >&2
+
+        return 6
+    fi
+
+
+    line_number=1
+
+
+    while IFS=$'\t' read -r \
+        subsystem \
+        function_name \
+        visibility \
+        stability \
+        owner \
+        extra_field; do
+
+        line_number="$((line_number + 1))"
+
+
+        if [[ -z "$subsystem" &&
+              -z "$function_name" &&
+              -z "$visibility" &&
+              -z "$stability" &&
+              -z "$owner" ]]; then
+
+            printf '%s\n' \
+                "ERROR: API compatibility snapshot contains an empty record at line ${line_number}." \
+                >&2
+
+            return 6
+        fi
+
+
+        if [[ -n "$extra_field" ]]; then
+
+            printf '%s\n' \
+                "ERROR: API compatibility snapshot contains too many fields at line ${line_number}." \
+                >&2
+
+            return 6
+        fi
+
+
+        if [[ -z "$subsystem" ||
+              -z "$function_name" ||
+              -z "$visibility" ||
+              -z "$stability" ||
+              -z "$owner" ]]; then
+
+            printf '%s\n' \
+                "ERROR: API compatibility snapshot contains incomplete metadata at line ${line_number}." \
+                >&2
+
+            return 6
+        fi
+
+
+        stoleus_api_validate_identifier \
+            "$subsystem" \
+            "snapshot subsystem" ||
+            return $?
+
+
+        if [[ ! "$function_name" =~ ^stoleus_[a-zA-Z0-9_]+$ ]]; then
+
+            printf '%s\n' \
+                "ERROR: API compatibility snapshot contains an invalid function at line ${line_number}: ${function_name}" \
+                >&2
+
+            return 6
+        fi
+
+
+        case "$visibility" in
+            public|dsl)
+                ;;
+            *)
+
+                printf '%s\n' \
+                    "ERROR: API compatibility snapshot contains unsupported visibility at line ${line_number}: ${visibility}" \
+                    >&2
+
+                return 6
+
+                ;;
+        esac
+
+
+        case "$stability" in
+            stable|experimental)
+                ;;
+            *)
+
+                printf '%s\n' \
+                    "ERROR: API compatibility snapshot contains unsupported stability at line ${line_number}: ${stability}" \
+                    >&2
+
+                return 6
+
+                ;;
+        esac
+
+    done < <(
+        tail -n +2 "$snapshot_path"
+    )
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_api_compare_snapshot
+# ==============================================================================
+#
+# Purpose:
+#     Compare the live supported API surface with a committed compatibility
+#     snapshot.
+#
+# Arguments:
+#
+#     $1 = committed baseline path
+#     $2 = optional path where the generated live snapshot should be preserved
+#
+# Return codes:
+#
+#     0 = live API matches the baseline exactly
+#     2 = invalid arguments
+#     6 = invalid or unavailable baseline
+#     8 = compatibility difference detected
+#
+# Comparison includes:
+#
+#     - subsystem ownership;
+#     - function name;
+#     - visibility;
+#     - stability;
+#     - owner file.
+# ==============================================================================
+
+stoleus_api_compare_snapshot() {
+
+    local baseline_path="${1:-}"
+    local preserved_live_path="${2:-}"
+
+    local temporary_root=""
+    local live_snapshot=""
+    local exit_code=0
+
+
+    if [[ -z "$baseline_path" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API compatibility comparison requires a baseline path." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ "${STOLEUS_API_INITIALIZED:-false}" != "true" ]]; then
+
+        printf '%s\n' \
+            "ERROR: API Registry must be initialized before compatibility comparison." \
+            >&2
+
+        return 6
+    fi
+
+
+    stoleus_api_validate_snapshot \
+        "$baseline_path" ||
+        return $?
+
+
+    temporary_root="$(
+        mktemp -d
+    )" || return $?
+
+
+    live_snapshot="${temporary_root}/live-kernel-api.tsv"
+
+
+    if ! stoleus_api_write_snapshot "$live_snapshot"; then
+
+        exit_code=$?
+
+        rm -rf "$temporary_root"
+
+        return "$exit_code"
+    fi
+
+
+    if [[ -n "$preserved_live_path" ]]; then
+
+        mkdir -p \
+            "$(dirname -- "$preserved_live_path")" ||
+            {
+                exit_code=$?
+                rm -rf "$temporary_root"
+                return "$exit_code"
+            }
+
+
+        cp \
+            "$live_snapshot" \
+            "$preserved_live_path" ||
+            {
+                exit_code=$?
+                rm -rf "$temporary_root"
+                return "$exit_code"
+            }
+    fi
+
+
+    if cmp -s \
+        "$baseline_path" \
+        "$live_snapshot"; then
+
+        rm -rf "$temporary_root"
+
+        return 0
+    fi
+
+
+    printf '%s\n' \
+        "ERROR: Kernel API compatibility difference detected." \
+        "Baseline: ${baseline_path}" \
+        >&2
+
+
+    if command -v diff >/dev/null 2>&1; then
+
+        printf '%s\n' \
+            "Compatibility diff:" \
+            >&2
+
+        diff -u \
+            "$baseline_path" \
+            "$live_snapshot" \
+            >&2 ||
+            true
+    fi
+
+
+    rm -rf "$temporary_root"
+
+    return 8
+}
+
+
+# ==============================================================================
 # stoleus_api_register_defaults
 # ==============================================================================
 #
@@ -652,6 +980,9 @@ stoleus_api_register_defaults() {
     stoleus_api_register plugin-manifest stoleus_plugin_implementation dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_dependencies dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_capabilities dsl stable kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_requires_services dsl experimental kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_provides_service dsl experimental kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_service_operation dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_lifecycle dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_end dsl stable kernel/definition/providers/bash.sh
 
@@ -762,6 +1093,7 @@ stoleus_api_register_defaults() {
     stoleus_api_register api stoleus_api_list_subsystems public stable kernel/api/api.sh
     stoleus_api_register api stoleus_api_validate public stable kernel/api/api.sh
     stoleus_api_register api stoleus_api_write_snapshot public stable kernel/api/api.sh
+    stoleus_api_register api stoleus_api_compare_snapshot public stable kernel/api/api.sh
     stoleus_api_register api stoleus_api_get_count public stable kernel/api/api.sh
     stoleus_api_register api stoleus_api_reset public stable kernel/api/api.sh
 

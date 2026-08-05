@@ -30,6 +30,9 @@ plugin-manifest	stoleus_plugin_description	dsl	stable	kernel/definition/provider
 plugin-manifest	stoleus_plugin_implementation	dsl	stable	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_dependencies	dsl	stable	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_capabilities	dsl	stable	kernel/definition/providers/bash.sh
+plugin-manifest	stoleus_plugin_requires_services	dsl	experimental	kernel/definition/providers/bash.sh
+plugin-manifest	stoleus_plugin_provides_service	dsl	experimental	kernel/definition/providers/bash.sh
+plugin-manifest	stoleus_plugin_service_operation	dsl	experimental	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_lifecycle	dsl	stable	kernel/definition/providers/bash.sh
 plugin-manifest	stoleus_plugin_end	dsl	stable	kernel/definition/providers/bash.sh
 registry	stoleus_registry_contains	public	stable	kernel/registry/registry.sh
@@ -100,5 +103,6 @@ api	stoleus_api_list	public	stable	kernel/api/api.sh
 api	stoleus_api_list_subsystems	public	stable	kernel/api/api.sh
 api	stoleus_api_validate	public	stable	kernel/api/api.sh
 api	stoleus_api_write_snapshot	public	stable	kernel/api/api.sh
+api	stoleus_api_compare_snapshot	public	stable	kernel/api/api.sh
 api	stoleus_api_get_count	public	stable	kernel/api/api.sh
 api	stoleus_api_reset	public	stable	kernel/api/api.sh

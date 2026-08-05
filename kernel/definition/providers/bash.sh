@@ -64,6 +64,14 @@ STOLEUS_MANIFEST_IMPLEMENTATION=""
 STOLEUS_MANIFEST_DEPENDENCIES=""
 STOLEUS_MANIFEST_CAPABILITIES=""
 
+STOLEUS_MANIFEST_REQUIRED_SERVICES=""
+STOLEUS_MANIFEST_PROVIDED_SERVICES=""
+STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS=""
+
+declare -A STOLEUS_MANIFEST_REQUIRED_SERVICE_SET=()
+declare -A STOLEUS_MANIFEST_PROVIDED_SERVICE_SET=()
+declare -A STOLEUS_MANIFEST_SERVICE_OPERATION_SET=()
+
 STOLEUS_MANIFEST_INSTALL_FUNCTION=""
 STOLEUS_MANIFEST_CONFIGURE_FUNCTION=""
 STOLEUS_MANIFEST_VERIFY_FUNCTION=""
@@ -85,6 +93,14 @@ stoleus_manifest_bash_reset() {
     STOLEUS_MANIFEST_IMPLEMENTATION=""
     STOLEUS_MANIFEST_DEPENDENCIES=""
     STOLEUS_MANIFEST_CAPABILITIES=""
+
+    STOLEUS_MANIFEST_REQUIRED_SERVICES=""
+    STOLEUS_MANIFEST_PROVIDED_SERVICES=""
+    STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS=""
+
+    STOLEUS_MANIFEST_REQUIRED_SERVICE_SET=()
+    STOLEUS_MANIFEST_PROVIDED_SERVICE_SET=()
+    STOLEUS_MANIFEST_SERVICE_OPERATION_SET=()
 
     STOLEUS_MANIFEST_INSTALL_FUNCTION=""
     STOLEUS_MANIFEST_CONFIGURE_FUNCTION=""
@@ -275,6 +291,309 @@ stoleus_plugin_capabilities() {
     STOLEUS_MANIFEST_CAPABILITIES="$(
         stoleus_manifest_join_values "$@"
     )" || return $?
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_plugin_requires_services
+# ==============================================================================
+#
+# Purpose:
+#     Declare contracts required by the current plugin.
+#
+# Arguments:
+#
+#     one or more contract IDs
+#
+# Normalized format:
+#
+#     contract-a,contract-b
+# ==============================================================================
+
+stoleus_plugin_requires_services() {
+
+    local service_id=""
+    local normalized=""
+
+
+    stoleus_manifest_require_active || return $?
+
+
+    if (( $# == 0 )); then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_requires_services requires at least one service ID." \
+            >&2
+
+        return 2
+    fi
+
+
+    for service_id in "$@"; do
+
+        if [[ ! "$service_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+            printf '%s\n' \
+                "ERROR: Invalid required service ID: ${service_id}" >&2
+
+            return 6
+        fi
+
+
+        if [[ -n "${STOLEUS_MANIFEST_REQUIRED_SERVICE_SET[$service_id]+declared}" ]]; then
+
+            printf '%s\n' \
+                "ERROR: Duplicate required service declaration: ${service_id}" \
+                >&2
+
+            return 8
+        fi
+
+
+        STOLEUS_MANIFEST_REQUIRED_SERVICE_SET["$service_id"]="true"
+
+
+        if [[ -n "$normalized" ]]; then
+            normalized+=","
+        fi
+
+
+        normalized+="$service_id"
+    done
+
+
+    if [[ -n "$STOLEUS_MANIFEST_REQUIRED_SERVICES" &&
+          -n "$normalized" ]]; then
+
+        STOLEUS_MANIFEST_REQUIRED_SERVICES+=","
+    fi
+
+
+    STOLEUS_MANIFEST_REQUIRED_SERVICES+="$normalized"
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_plugin_provides_service
+# ==============================================================================
+#
+# Purpose:
+#     Declare one contract implementation provided by the current plugin.
+#
+# Arguments:
+#
+#     $1 = contract ID
+#     $2 = implemented semantic version
+#     $3 = optional numeric selection priority; default 0
+#
+# Normalized format:
+#
+#     contract-id|version|priority
+#
+# Multiple service declarations are separated by semicolons.
+# ==============================================================================
+
+stoleus_plugin_provides_service() {
+
+    local service_id="${1:-}"
+    local version="${2:-}"
+    local priority="${3:-0}"
+    local record=""
+
+
+    stoleus_manifest_require_active || return $?
+
+
+    if [[ -z "$service_id" || -z "$version" ]]; then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_provides_service requires service ID and version." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$service_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid provided service ID: ${service_id}" >&2
+
+        return 6
+    fi
+
+
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Service '${service_id}' version must use semantic version format: ${version}" \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ ! "$priority" =~ ^[0-9]+$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Service '${service_id}' priority must be a non-negative integer." \
+            >&2
+
+        return 6
+    fi
+
+
+    if (( priority > 100000 )); then
+
+        printf '%s\n' \
+            "ERROR: Service '${service_id}' priority cannot exceed 100000." \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ -n "${STOLEUS_MANIFEST_PROVIDED_SERVICE_SET[$service_id]+declared}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Duplicate provided service declaration: ${service_id}" \
+            >&2
+
+        return 8
+    fi
+
+
+    STOLEUS_MANIFEST_PROVIDED_SERVICE_SET["$service_id"]="true"
+
+    record="${service_id}|${version}|${priority}"
+
+
+    if [[ -n "$STOLEUS_MANIFEST_PROVIDED_SERVICES" ]]; then
+        STOLEUS_MANIFEST_PROVIDED_SERVICES+=";"
+    fi
+
+
+    STOLEUS_MANIFEST_PROVIDED_SERVICES+="$record"
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_plugin_service_operation
+# ==============================================================================
+#
+# Purpose:
+#     Bind one operation of a provided service to an implementation function.
+#
+# Arguments:
+#
+#     $1 = service/contract ID
+#     $2 = operation ID
+#     $3 = implementation function
+#
+# Normalized format:
+#
+#     service-id|operation-id|function-name
+#
+# Multiple bindings are separated by semicolons.
+# ==============================================================================
+
+stoleus_plugin_service_operation() {
+
+    local service_id="${1:-}"
+    local operation_id="${2:-}"
+    local function_name="${3:-}"
+
+    local operation_key=""
+    local record=""
+
+
+    stoleus_manifest_require_active || return $?
+
+
+    if [[ -z "$service_id" ||
+          -z "$operation_id" ||
+          -z "$function_name" ]]; then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_service_operation requires service ID, operation ID, and function." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$service_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid service operation service ID: ${service_id}" \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ -z "${STOLEUS_MANIFEST_PROVIDED_SERVICE_SET[$service_id]+declared}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Service operation references a service not provided by this plugin: ${service_id}" \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ ! "$operation_id" =~ ^[a-z][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid service operation ID: ${operation_id}" >&2
+
+        return 6
+    fi
+
+
+    if [[ ! "$function_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid service operation function: ${function_name}" \
+            >&2
+
+        return 6
+    fi
+
+
+    operation_key="${service_id}|${operation_id}"
+
+
+    if [[ -n "${STOLEUS_MANIFEST_SERVICE_OPERATION_SET[$operation_key]+declared}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Duplicate service operation binding: ${operation_key}" \
+            >&2
+
+        return 8
+    fi
+
+
+    STOLEUS_MANIFEST_SERVICE_OPERATION_SET["$operation_key"]="true"
+
+    record="${service_id}|${operation_id}|${function_name}"
+
+
+    if [[ -n "$STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS" ]]; then
+        STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS+=";"
+    fi
+
+
+    STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS+="$record"
 
 
     return 0
@@ -493,7 +812,10 @@ stoleus_manifest_bash_load() {
         "$STOLEUS_MANIFEST_CONFIGURE_FUNCTION" \
         "$STOLEUS_MANIFEST_VERIFY_FUNCTION" \
         "$STOLEUS_MANIFEST_UPGRADE_FUNCTION" \
-        "$STOLEUS_MANIFEST_REMOVE_FUNCTION" ||
+        "$STOLEUS_MANIFEST_REMOVE_FUNCTION" \
+        "$STOLEUS_MANIFEST_REQUIRED_SERVICES" \
+        "$STOLEUS_MANIFEST_PROVIDED_SERVICES" \
+        "$STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS" ||
         return $?
 
 
