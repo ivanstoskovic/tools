@@ -29,6 +29,31 @@ set -Eeuo pipefail
 
 declare -a STOLEUS_COMPONENT_IDS=()
 
+
+# ==============================================================================
+# Component Lifecycle Functions
+# ==============================================================================
+#
+# Each lifecycle stage is optional.
+#
+# A component may expose:
+#
+#     install
+#     configure
+#     verify
+#     upgrade
+#     remove
+#
+# During migration, the existing entry function remains supported.
+# ==============================================================================
+
+declare -A STOLEUS_COMPONENT_INSTALL_FUNCTIONS=()
+declare -A STOLEUS_COMPONENT_CONFIGURE_FUNCTIONS=()
+declare -A STOLEUS_COMPONENT_VERIFY_FUNCTIONS=()
+declare -A STOLEUS_COMPONENT_UPGRADE_FUNCTIONS=()
+declare -A STOLEUS_COMPONENT_REMOVE_FUNCTIONS=()
+
+
 declare -A STOLEUS_COMPONENT_ENTRY_FUNCTIONS=()
 declare -A STOLEUS_COMPONENT_DESCRIPTIONS=()
 declare -A STOLEUS_COMPONENT_IMPLEMENTATION_FILES=()

@@ -206,7 +206,7 @@ assert_equals \
 
 assert_equals \
     "2" \
-    "${#STOLEUS_REGISTRY_IDS[@]}" \
+    "$(stoleus_registry_get_count)" \
     "Bootstrap should import two Registry entries."
 
 
@@ -216,9 +216,16 @@ assert_equals \
     "Definition collection should be frozen."
 
 
+registry_frozen="false"
+
+if stoleus_registry_is_frozen; then
+    registry_frozen="true"
+fi
+
+
 assert_equals \
     "true" \
-    "${STOLEUS_REGISTRY_FROZEN:-false}" \
+    "$registry_frozen" \
     "Registry should be frozen."
 
 
@@ -264,7 +271,7 @@ stoleus_kernel_bootstrap
 
 assert_equals \
     "2" \
-    "${#STOLEUS_REGISTRY_IDS[@]}" \
+    "$(stoleus_registry_get_count)" \
     "Repeated successful bootstrap must not duplicate Registry entries."
 
 

@@ -183,7 +183,11 @@ stoleus_resolver_cache_reference() {
     fi
 
 
-    category="${STOLEUS_REGISTRY_CATEGORIES[$registry_index]:-}"
+    category="$(
+        stoleus_registry_get_field_by_index \
+            "$registry_index" \
+            "category"
+    )" || return $?
 
 
     if [[ -z "$category" ]]; then
@@ -294,7 +298,11 @@ stoleus_resolver_resolve() {
     )" || return $?
 
 
-    category="${STOLEUS_REGISTRY_CATEGORIES[$registry_index]}"
+    category="$(
+        stoleus_registry_get_field_by_index \
+            "$registry_index" \
+            "category"
+    )" || return $?
 
 
     printf '%s\t%s\t%s\n' \
@@ -392,7 +400,11 @@ stoleus_resolver_resolve_dependencies() {
     )" || return $?
 
 
-    dependency_list="${STOLEUS_REGISTRY_DEPENDENCIES[$registry_index]}"
+    dependency_list="$(
+        stoleus_registry_get_field_by_index \
+            "$registry_index" \
+            "dependencies"
+    )" || return $?
 
 
     while IFS= read -r dependency_id; do
@@ -446,9 +458,6 @@ stoleus_resolver_validate_plugin() {
     local -A seen_dependencies=()
 
 
-    # --------------------------------------------------------------------------
-    # A plugin ID is required.
-    # --------------------------------------------------------------------------
     if [[ -z "$plugin_id" ]]; then
 
         printf '%s\n' \
@@ -458,50 +467,32 @@ stoleus_resolver_validate_plugin() {
     fi
 
 
-    # --------------------------------------------------------------------------
-    # Registry metadata must already be complete and immutable.
-    # --------------------------------------------------------------------------
     stoleus_resolver_require_registry || return $?
 
 
-    # --------------------------------------------------------------------------
-    # Resolve the requested plugin directly through the Registry.
-    #
-    # We deliberately do not call a state-changing resolver function inside
-    # command substitution. Bash executes command substitution in a subshell,
-    # and mutations to Resolver cache arrays would otherwise be discarded.
-    # --------------------------------------------------------------------------
     registry_index="$(
         stoleus_registry_get_index "$plugin_id"
     )" || return $?
 
 
-    # --------------------------------------------------------------------------
-    # Cache the requested plugin explicitly in the current shell process.
-    # --------------------------------------------------------------------------
     stoleus_resolver_cache_reference \
         "$plugin_id" \
         "$registry_index" ||
         return $?
 
 
-    dependency_list="${STOLEUS_REGISTRY_DEPENDENCIES[$registry_index]}"
+    dependency_list="$(
+        stoleus_registry_get_field_by_index \
+            "$registry_index" \
+            "dependencies"
+    )" || return $?
 
 
-    # --------------------------------------------------------------------------
-    # Validate and resolve every direct dependency.
-    #
-    # Recursive traversal and multi-plugin cycle detection remain Planning
-    # responsibilities.
-    # --------------------------------------------------------------------------
     while IFS= read -r dependency_id; do
 
         [[ -z "$dependency_id" ]] && continue
 
 
-        # ----------------------------------------------------------------------
-        # A plugin cannot directly depend on itself.
-        # ----------------------------------------------------------------------
         if [[ "$dependency_id" == "$plugin_id" ]]; then
 
             printf '%s\n' \
@@ -512,9 +503,6 @@ stoleus_resolver_validate_plugin() {
         fi
 
 
-        # ----------------------------------------------------------------------
-        # Duplicate direct dependencies indicate invalid manifest metadata.
-        # ----------------------------------------------------------------------
         if [[ -n "${seen_dependencies[$dependency_id]+seen}" ]]; then
 
             printf '%s\n' \
@@ -528,17 +516,11 @@ stoleus_resolver_validate_plugin() {
         seen_dependencies["$dependency_id"]="true"
 
 
-        # ----------------------------------------------------------------------
-        # Resolve the dependency through the immutable Registry.
-        # ----------------------------------------------------------------------
         dependency_index="$(
             stoleus_registry_get_index "$dependency_id"
         )" || return $?
 
 
-        # ----------------------------------------------------------------------
-        # Cache the resolved dependency in the current shell process.
-        # ----------------------------------------------------------------------
         stoleus_resolver_cache_reference \
             "$dependency_id" \
             "$dependency_index" ||
@@ -574,12 +556,18 @@ stoleus_resolver_validate_registry() {
     stoleus_resolver_require_registry || return $?
 
 
-    for plugin_id in "${STOLEUS_REGISTRY_IDS[@]}"; do
+    while IFS= read -r plugin_id; do
+
+        [[ -z "$plugin_id" ]] && continue
+
 
         stoleus_resolver_validate_plugin \
             "$plugin_id" ||
             return $?
-    done
+
+    done < <(
+        stoleus_registry_list_ids
+    )
 
 
     STOLEUS_RESOLVER_VALIDATED="true"

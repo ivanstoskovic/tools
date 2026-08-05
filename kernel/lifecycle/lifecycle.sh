@@ -193,7 +193,11 @@ stoleus_lifecycle_load_plugin() {
     )" || return $?
 
 
-    implementation_path="${STOLEUS_REGISTRY_IMPLEMENTATIONS[$registry_index]:-}"
+    implementation_path="$(
+        stoleus_registry_get_field_by_index \
+            "$registry_index" \
+            "implementation"
+    )" || return $?
 
 
     if [[ -z "$implementation_path" || ! -f "$implementation_path" ]]; then
@@ -206,12 +210,6 @@ stoleus_lifecycle_load_plugin() {
     fi
 
 
-    # --------------------------------------------------------------------------
-    # Load implementation code only when execution requires it.
-    #
-    # Discovery, Definition, Registry, Resolver, and Planning remain entirely
-    # metadata-only.
-    # --------------------------------------------------------------------------
     source "$implementation_path"
 
 
@@ -324,6 +322,8 @@ stoleus_lifecycle_invoke() {
     local lifecycle_stage="${3:-}"
     local lifecycle_function="${4:-}"
 
+    local registered_plugin_id=""
+
 
     if [[ -z "$plugin_id" ||
           -z "$registry_index" ||
@@ -344,7 +344,13 @@ stoleus_lifecycle_invoke() {
     stoleus_lifecycle_require_registry || return $?
 
 
-    if [[ "${STOLEUS_REGISTRY_IDS[$registry_index]:-}" != "$plugin_id" ]]; then
+    registered_plugin_id="$(
+        stoleus_registry_get_id_by_index \
+            "$registry_index"
+    )" || return $?
+
+
+    if [[ "$registered_plugin_id" != "$plugin_id" ]]; then
 
         printf '%s\n' \
             "ERROR: ExecutionPlan plugin ID and Registry index do not match: ${plugin_id}" \

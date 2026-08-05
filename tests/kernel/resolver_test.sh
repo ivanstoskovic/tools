@@ -15,6 +15,7 @@ TEST_ROOT="$(
 PROJECT_ROOT="$TEST_ROOT"
 
 source "${PROJECT_ROOT}/kernel/kernel.sh"
+source "${PROJECT_ROOT}/tests/kernel/helpers/registry_storage.sh"
 
 
 TEST_TEMP_ROOT=""
@@ -311,13 +312,11 @@ assert_equals \
 # Verify direct self-dependency validation.
 # ==============================================================================
 
-server_index="$(
-    stoleus_registry_get_index "server"
+original_server_dependencies="$(
+    stoleus_registry_get_field         "server"         "dependencies"
 )"
 
-original_server_dependencies="${STOLEUS_REGISTRY_DEPENDENCIES[$server_index]}"
-
-STOLEUS_REGISTRY_DEPENDENCIES[$server_index]="server"
+stoleus_test_registry_replace_field     "server"     "dependencies"     "server"
 
 
 set +e
@@ -337,14 +336,14 @@ assert_equals \
     "Direct self-dependency should return conflict code 8."
 
 
-STOLEUS_REGISTRY_DEPENDENCIES[$server_index]="$original_server_dependencies"
+stoleus_test_registry_replace_field     "server"     "dependencies"     "$original_server_dependencies"
 
 
 # ==============================================================================
 # Verify duplicate direct dependencies.
 # ==============================================================================
 
-STOLEUS_REGISTRY_DEPENDENCIES[$server_index]="chrony,chrony"
+stoleus_test_registry_replace_field     "server"     "dependencies"     "chrony,chrony"
 
 
 set +e
@@ -364,14 +363,14 @@ assert_equals \
     "Duplicate direct dependencies should return conflict code 8."
 
 
-STOLEUS_REGISTRY_DEPENDENCIES[$server_index]="$original_server_dependencies"
+stoleus_test_registry_replace_field     "server"     "dependencies"     "$original_server_dependencies"
 
 
 # ==============================================================================
 # Verify Registry must be frozen.
 # ==============================================================================
 
-STOLEUS_REGISTRY_FROZEN="false"
+STOLEUS_METADATA_COLLECTION_FROZEN["$STOLEUS_PLUGIN_REGISTRY_COLLECTION_ID"]="false"
 
 
 set +e
@@ -391,7 +390,7 @@ assert_equals \
     "Resolution against an unfrozen Registry should return code 6."
 
 
-STOLEUS_REGISTRY_FROZEN="true"
+STOLEUS_METADATA_COLLECTION_FROZEN["$STOLEUS_PLUGIN_REGISTRY_COLLECTION_ID"]="true"
 
 
 printf '%s\n' \

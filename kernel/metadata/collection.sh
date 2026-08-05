@@ -645,6 +645,81 @@ stoleus_metadata_collection_get_index() {
 
 
 # ==============================================================================
+# stoleus_metadata_collection_get_key_by_index
+# ==============================================================================
+#
+# Purpose:
+#     Return the record key stored at one numeric row index.
+#
+# Arguments:
+#
+#     $1 = collection ID
+#     $2 = numeric row index
+# ==============================================================================
+
+stoleus_metadata_collection_get_key_by_index() {
+
+    local collection_id="${1:-}"
+    local row_index="${2:-}"
+
+    local row_count=0
+    local row_key=""
+
+
+    if [[ -z "$collection_id" ||
+          -z "$row_index" ||
+          ! "$row_index" =~ ^[0-9]+$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Metadata indexed-key lookup requires collection ID and numeric row index." \
+            >&2
+
+        return 2
+    fi
+
+
+    if ! stoleus_metadata_collection_exists "$collection_id"; then
+
+        printf '%s\n' \
+            "ERROR: Unknown metadata collection: $collection_id" >&2
+
+        return 6
+    fi
+
+
+    row_count="${STOLEUS_METADATA_COLLECTION_ROW_COUNTS[$collection_id]}"
+
+
+    if (( row_index >= row_count )); then
+
+        printf '%s\n' \
+            "ERROR: Metadata row index is outside the valid range: ${row_index}" \
+            >&2
+
+        return 6
+    fi
+
+
+    row_key="${STOLEUS_METADATA_ROW_KEYS["${collection_id}|${row_index}"]:-}"
+
+
+    if [[ -z "$row_key" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Metadata row key is unavailable at index ${row_index} in collection '${collection_id}'." \
+            >&2
+
+        return 6
+    fi
+
+
+    printf '%s\n' "$row_key"
+
+    return 0
+}
+
+
+# ==============================================================================
 # stoleus_metadata_collection_get_field
 # ==============================================================================
 

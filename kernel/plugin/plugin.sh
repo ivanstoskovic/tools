@@ -677,19 +677,25 @@ stoleus_plugin_get() {
 stoleus_plugin_list() {
 
     local category_filter="${1:-}"
-    local registry_index=0
     local plugin_id=""
     local category=""
+    local description=""
     local runtime_state=""
 
 
     stoleus_plugin_require_active || return $?
 
 
-    for registry_index in "${!STOLEUS_REGISTRY_IDS[@]}"; do
+    while IFS= read -r plugin_id; do
 
-        plugin_id="${STOLEUS_REGISTRY_IDS[$registry_index]}"
-        category="${STOLEUS_REGISTRY_CATEGORIES[$registry_index]}"
+        [[ -z "$plugin_id" ]] && continue
+
+
+        category="$(
+            stoleus_registry_get_field \
+                "$plugin_id" \
+                "category"
+        )" || return $?
 
 
         if [[ -n "$category_filter" ]] &&
@@ -697,6 +703,13 @@ stoleus_plugin_list() {
 
             continue
         fi
+
+
+        description="$(
+            stoleus_registry_get_field \
+                "$plugin_id" \
+                "description"
+        )" || return $?
 
 
         if stoleus_lifecycle_is_plugin_loaded "$plugin_id"; then
@@ -710,8 +723,11 @@ stoleus_plugin_list() {
             "$plugin_id" \
             "$category" \
             "$runtime_state" \
-            "${STOLEUS_REGISTRY_DESCRIPTIONS[$registry_index]}"
-    done
+            "$description"
+
+    done < <(
+        stoleus_registry_list_ids
+    )
 
 
     return 0

@@ -135,6 +135,7 @@ source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/contract/definition.sh"
+source "${STOLEUS_KERNEL_ROOT}/contract/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
@@ -185,6 +186,7 @@ stoleus_kernel_initialize() {
     stoleus_registry_initialize || return $?
     stoleus_resolver_initialize || return $?
     stoleus_contract_definition_initialize || return $?
+    stoleus_contract_registry_initialize || return $?
     stoleus_plugin_initialize || return $?
     stoleus_planning_initialize || return $?
     stoleus_lifecycle_initialize || return $?
@@ -364,6 +366,22 @@ stoleus_kernel_bootstrap() {
     fi
 
 
+    STOLEUS_KERNEL_BOOTSTRAP_STAGE="contract-registry"
+
+
+    if stoleus_contract_registry_import_definitions; then
+        exit_code=0
+    else
+        exit_code=$?
+
+        stoleus_kernel_record_bootstrap_failure \
+            "contract-registry" \
+            "$exit_code"
+
+        return "$exit_code"
+    fi
+
+
     STOLEUS_KERNEL_BOOTSTRAP_STAGE="plugins"
 
 
@@ -413,6 +431,14 @@ stoleus_kernel_bootstrap() {
 
 stoleus_kernel_get_status() {
 
+    local registry_count=0
+
+
+    registry_count="$(
+        stoleus_registry_get_count
+    )" || return $?
+
+
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "${STOLEUS_KERNEL_LOADED:-false}" \
         "${STOLEUS_KERNEL_INITIALIZED:-false}" \
@@ -423,7 +449,7 @@ stoleus_kernel_get_status() {
         "${STOLEUS_KERNEL_BOOTSTRAP_EXIT_CODE:-0}" \
         "${#STOLEUS_DISCOVERY_RECORD_PATHS[@]}" \
         "${#STOLEUS_DEFINITION_IDS[@]}" \
-        "${#STOLEUS_REGISTRY_IDS[@]}" \
+        "$registry_count" \
         "${#STOLEUS_RESOLVER_RESOLVED_IDS[@]}" \
         "${STOLEUS_PLUGIN_MANAGER_ACTIVE:-false}"
 
