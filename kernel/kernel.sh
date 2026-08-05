@@ -140,6 +140,7 @@ source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
 source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
+source "${STOLEUS_KERNEL_ROOT}/api/api.sh"
 
 
 # ==============================================================================
@@ -191,6 +192,7 @@ stoleus_kernel_initialize() {
     stoleus_planning_initialize || return $?
     stoleus_lifecycle_initialize || return $?
     stoleus_execution_initialize || return $?
+    stoleus_api_initialize || return $?
 
 
     STOLEUS_KERNEL_INITIALIZED="true"
