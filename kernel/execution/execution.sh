@@ -52,6 +52,9 @@ fi
 STOLEUS_EXECUTION_SUBSYSTEM_LOADED="true"
 
 
+source "${STOLEUS_KERNEL_ROOT}/execution/result_registry.sh"
+
+
 # ==============================================================================
 # Execution Result State
 # ==============================================================================
@@ -76,6 +79,7 @@ declare -a STOLEUS_EXECUTION_RESULT_EXIT_CODES=()
 # ==============================================================================
 
 STOLEUS_EXECUTION_SESSION_ID=""
+STOLEUS_EXECUTION_SESSION_MODE="execute"
 STOLEUS_EXECUTION_SESSION_STATUS="not-started"
 STOLEUS_EXECUTION_SESSION_TARGET=""
 STOLEUS_EXECUTION_SESSION_OPERATION=""
@@ -94,6 +98,9 @@ STOLEUS_EXECUTION_SESSION_GENERATION=0
 
 stoleus_execution_reset() {
 
+    # Compatibility projection. The Metadata Collection registry is now the
+    # authoritative result store, but these arrays remain available while
+    # existing consumers migrate.
     STOLEUS_EXECUTION_RESULT_STEP_NUMBERS=()
     STOLEUS_EXECUTION_RESULT_PLUGIN_IDS=()
     STOLEUS_EXECUTION_RESULT_STAGES=()
@@ -101,11 +108,14 @@ stoleus_execution_reset() {
     STOLEUS_EXECUTION_RESULT_STATUSES=()
     STOLEUS_EXECUTION_RESULT_EXIT_CODES=()
 
+    stoleus_execution_result_registry_reset || return $?
+
     STOLEUS_EXECUTION_STARTED="false"
     STOLEUS_EXECUTION_COMPLETED="false"
     STOLEUS_EXECUTION_SUCCEEDED="false"
 
     STOLEUS_EXECUTION_SESSION_ID=""
+    STOLEUS_EXECUTION_SESSION_MODE="execute"
     STOLEUS_EXECUTION_SESSION_STATUS="not-started"
     STOLEUS_EXECUTION_SESSION_TARGET=""
     STOLEUS_EXECUTION_SESSION_OPERATION=""
@@ -185,6 +195,41 @@ stoleus_execution_now() {
 
 
 # ==============================================================================
+# stoleus_execution_now_ms
+# ==============================================================================
+#
+# Output:
+#
+#     Milliseconds since the Unix epoch.
+#
+# Git Bash and GNU date support %3N. A one-second precision fallback is used
+# when millisecond formatting is unavailable.
+# ==============================================================================
+
+stoleus_execution_now_ms() {
+
+    local timestamp=""
+
+
+    if timestamp="$(date +%s%3N 2>/dev/null)" &&
+       [[ "$timestamp" =~ ^[0-9]+$ ]]; then
+
+        printf '%s\n' "$timestamp"
+
+        return 0
+    fi
+
+
+    timestamp="$(date +%s)" || return $?
+
+
+    printf '%s\n' "$((timestamp * 1000))"
+
+    return 0
+}
+
+
+# ==============================================================================
 # stoleus_execution_create_session_id
 # ==============================================================================
 
@@ -218,6 +263,25 @@ STOLEUS_EXECUTION_SESSION_GENERATION + 1\
 
 stoleus_execution_start_session() {
 
+    local execution_mode="${1:-execute}"
+
+
+    case "$execution_mode" in
+
+        execute|dry-run)
+            ;;
+
+        *)
+
+            printf '%s\n' \
+                "ERROR: Unsupported execution mode: ${execution_mode}" >&2
+
+            return 2
+
+            ;;
+    esac
+
+
     if [[ "${STOLEUS_EXECUTION_SESSION_STATUS:-not-started}" != "not-started" ]]; then
 
         printf '%s\n' \
@@ -232,6 +296,7 @@ stoleus_execution_start_session() {
     )" || return $?
 
 
+    STOLEUS_EXECUTION_SESSION_MODE="$execution_mode"
     STOLEUS_EXECUTION_SESSION_STATUS="running"
     STOLEUS_EXECUTION_SESSION_TARGET="${STOLEUS_PLANNING_REQUEST_TARGET:-}"
     STOLEUS_EXECUTION_SESSION_OPERATION="${STOLEUS_PLANNING_REQUEST_OPERATION:-}"
@@ -342,8 +407,9 @@ stoleus_execution_get_session() {
     fi
 
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$STOLEUS_EXECUTION_SESSION_ID" \
+        "$STOLEUS_EXECUTION_SESSION_MODE" \
         "$STOLEUS_EXECUTION_SESSION_STATUS" \
         "$STOLEUS_EXECUTION_SESSION_TARGET" \
         "$STOLEUS_EXECUTION_SESSION_OPERATION" \
@@ -379,8 +445,29 @@ stoleus_execution_record_result() {
     local lifecycle_function="${4:-}"
     local status="${5:-}"
     local exit_code="${6:-}"
+    local started_at="${7:-}"
+    local finished_at="${8:-}"
+    local duration_ms="${9:-}"
 
 
+    stoleus_execution_result_registry_append \
+        "${STOLEUS_EXECUTION_SESSION_ID:-}" \
+        "${STOLEUS_EXECUTION_SESSION_MODE:-execute}" \
+        "$step_number" \
+        "$plugin_id" \
+        "$lifecycle_stage" \
+        "$lifecycle_function" \
+        "$status" \
+        "$exit_code" \
+        "$started_at" \
+        "$finished_at" \
+        "$duration_ms" ||
+        return $?
+
+
+    # --------------------------------------------------------------------------
+    # Compatibility projection.
+    # --------------------------------------------------------------------------
     STOLEUS_EXECUTION_RESULT_STEP_NUMBERS+=("$step_number")
     STOLEUS_EXECUTION_RESULT_PLUGIN_IDS+=("$plugin_id")
     STOLEUS_EXECUTION_RESULT_STAGES+=("$lifecycle_stage")
@@ -408,6 +495,7 @@ stoleus_execution_record_result() {
 stoleus_execution_execute_step() {
 
     local step_index="${1:-}"
+    local execution_mode="${2:-execute}"
 
     local step_number=""
     local plugin_id=""
@@ -416,16 +504,39 @@ stoleus_execution_execute_step() {
     local lifecycle_function=""
     local receives_arguments="false"
 
+    local started_at=""
+    local finished_at=""
+    local started_ms=0
+    local finished_ms=0
+    local duration_ms=0
+
     local exit_code=0
 
 
-    if [[ -z "$step_index" || ! "$step_index" =~ ^[0-9]+$ ]]; then
+    if [[ -z "$step_index" ||
+          ! "$step_index" =~ ^[0-9]+$ ]]; then
 
         printf '%s\n' \
             "ERROR: Execution step index must be numeric." >&2
 
         return 2
     fi
+
+
+    case "$execution_mode" in
+
+        execute|dry-run)
+            ;;
+
+        *)
+
+            printf '%s\n' \
+                "ERROR: Unsupported execution mode: ${execution_mode}" >&2
+
+            return 2
+
+            ;;
+    esac
 
 
     step_number="$((step_index + 1))"
@@ -435,15 +546,26 @@ stoleus_execution_execute_step() {
     lifecycle_function="${STOLEUS_PLAN_STEP_FUNCTIONS[$step_index]:-}"
     receives_arguments="${STOLEUS_PLAN_STEP_RECEIVES_ARGUMENTS[$step_index]:-false}"
 
+    started_at="$(stoleus_execution_now)" || return $?
+    started_ms="$(stoleus_execution_now_ms)" || return $?
+
 
     if [[ -z "$plugin_id" ||
           -z "$registry_index" ||
           -z "$lifecycle_stage" ||
           -z "$lifecycle_function" ]]; then
 
+        finished_at="$(stoleus_execution_now)" || return $?
+        finished_ms="$(stoleus_execution_now_ms)" || return $?
+        duration_ms="$((finished_ms - started_ms))"
+
+        (( duration_ms < 0 )) && duration_ms=0
+
+
         printf '%s\n' \
             "ERROR: ExecutionPlan step ${step_number} contains incomplete metadata." \
             >&2
+
 
         stoleus_execution_record_result \
             "$step_number" \
@@ -451,22 +573,43 @@ stoleus_execution_execute_step() {
             "$lifecycle_stage" \
             "$lifecycle_function" \
             "failed" \
-            "6"
+            "6" \
+            "$started_at" \
+            "$finished_at" \
+            "$duration_ms" ||
+            return $?
+
 
         return 6
     fi
 
 
-    # --------------------------------------------------------------------------
-    # Invoke the lifecycle function inside an `if` condition.
-    #
-    # Bash suppresses automatic `set -e` termination for commands evaluated as
-    # an if-condition. This lets us capture and preserve the lifecycle return
-    # code without modifying the caller's shell options.
-    #
-    # Target-plugin steps receive the original ExecutionRequest arguments.
-    # Dependency-plugin steps receive no target-specific arguments.
-    # --------------------------------------------------------------------------
+    if [[ "$execution_mode" == "dry-run" ]]; then
+
+        finished_at="$(stoleus_execution_now)" || return $?
+        finished_ms="$(stoleus_execution_now_ms)" || return $?
+        duration_ms="$((finished_ms - started_ms))"
+
+        (( duration_ms < 0 )) && duration_ms=0
+
+
+        stoleus_execution_record_result \
+            "$step_number" \
+            "$plugin_id" \
+            "$lifecycle_stage" \
+            "$lifecycle_function" \
+            "skipped" \
+            "0" \
+            "$started_at" \
+            "$finished_at" \
+            "$duration_ms" ||
+            return $?
+
+
+        return 0
+    fi
+
+
     if [[ "$receives_arguments" == "true" ]]; then
 
         if stoleus_lifecycle_invoke \
@@ -479,7 +622,6 @@ stoleus_execution_execute_step() {
             exit_code=0
 
         else
-
             exit_code=$?
         fi
 
@@ -494,10 +636,16 @@ stoleus_execution_execute_step() {
             exit_code=0
 
         else
-
             exit_code=$?
         fi
     fi
+
+
+    finished_at="$(stoleus_execution_now)" || return $?
+    finished_ms="$(stoleus_execution_now_ms)" || return $?
+    duration_ms="$((finished_ms - started_ms))"
+
+    (( duration_ms < 0 )) && duration_ms=0
 
 
     if (( exit_code == 0 )); then
@@ -508,7 +656,12 @@ stoleus_execution_execute_step() {
             "$lifecycle_stage" \
             "$lifecycle_function" \
             "succeeded" \
-            "0"
+            "0" \
+            "$started_at" \
+            "$finished_at" \
+            "$duration_ms" ||
+            return $?
+
 
         return 0
     fi
@@ -520,7 +673,11 @@ stoleus_execution_execute_step() {
         "$lifecycle_stage" \
         "$lifecycle_function" \
         "failed" \
-        "$exit_code"
+        "$exit_code" \
+        "$started_at" \
+        "$finished_at" \
+        "$duration_ms" ||
+        return $?
 
 
     return "$exit_code"
@@ -544,8 +701,41 @@ stoleus_execution_execute_step() {
 
 stoleus_execution_execute_plan() {
 
+    local execution_mode="execute"
+    local argument=""
     local step_index=0
     local exit_code=0
+
+
+    if (( $# > 1 )); then
+
+        printf '%s\n' \
+            "ERROR: Execution accepts at most one mode argument." >&2
+
+        return 2
+    fi
+
+
+    if (( $# == 1 )); then
+
+        argument="$1"
+
+        case "$argument" in
+
+            --dry-run)
+                execution_mode="dry-run"
+                ;;
+
+            *)
+
+                printf '%s\n' \
+                    "ERROR: Unsupported execution argument: ${argument}" >&2
+
+                return 2
+
+                ;;
+        esac
+    fi
 
 
     if [[ "${STOLEUS_EXECUTION_INITIALIZED:-false}" != "true" ]]; then
@@ -574,21 +764,19 @@ stoleus_execution_execute_plan() {
     STOLEUS_EXECUTION_STARTED="true"
 
 
-    stoleus_execution_start_session || return $?
+    stoleus_execution_start_session \
+        "$execution_mode" ||
+        return $?
 
 
-    # --------------------------------------------------------------------------
-    # Execute every frozen plan step in exact plan order.
-    #
-    # Using an `if` condition allows a nonzero lifecycle result to be captured
-    # safely without changing the shell's global errexit setting.
-    # --------------------------------------------------------------------------
     for step_index in "${!STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"; do
 
         STOLEUS_EXECUTION_SESSION_CURRENT_STEP="$((step_index + 1))"
 
 
-        if stoleus_execution_execute_step "$step_index"; then
+        if stoleus_execution_execute_step \
+            "$step_index" \
+            "$execution_mode"; then
 
             exit_code=0
 
@@ -646,22 +834,21 @@ stoleus_execution_execute_plan() {
 
 stoleus_execution_get_results() {
 
-    local result_index=0
+    stoleus_execution_result_registry_list
+
+    return $?
+}
 
 
-    for result_index in "${!STOLEUS_EXECUTION_RESULT_STEP_NUMBERS[@]}"; do
+# ==============================================================================
+# stoleus_execution_get_detailed_results
+# ==============================================================================
 
-        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "${STOLEUS_EXECUTION_RESULT_STEP_NUMBERS[$result_index]}" \
-            "${STOLEUS_EXECUTION_RESULT_PLUGIN_IDS[$result_index]}" \
-            "${STOLEUS_EXECUTION_RESULT_STAGES[$result_index]}" \
-            "${STOLEUS_EXECUTION_RESULT_FUNCTIONS[$result_index]}" \
-            "${STOLEUS_EXECUTION_RESULT_STATUSES[$result_index]}" \
-            "${STOLEUS_EXECUTION_RESULT_EXIT_CODES[$result_index]}"
-    done
+stoleus_execution_get_detailed_results() {
 
+    stoleus_execution_result_registry_list_detailed
 
-    return 0
+    return $?
 }
 
 
@@ -676,10 +863,12 @@ stoleus_execution_initialize() {
     fi
 
 
+    stoleus_execution_result_registry_initialize || return $?
     stoleus_execution_reset || return $?
 
 
     STOLEUS_EXECUTION_INITIALIZED="true"
+
 
     return 0
 }

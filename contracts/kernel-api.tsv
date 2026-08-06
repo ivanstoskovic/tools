@@ -142,6 +142,7 @@ lifecycle	stoleus_lifecycle_get_loaded	public	stable	kernel/lifecycle/lifecycle.
 lifecycle	stoleus_lifecycle_reset	public	stable	kernel/lifecycle/lifecycle.sh
 execution	stoleus_execution_execute_plan	public	stable	kernel/execution/execution.sh
 execution	stoleus_execution_get_results	public	stable	kernel/execution/execution.sh
+execution	stoleus_execution_get_detailed_results	public	experimental	kernel/execution/execution.sh
 execution	stoleus_execution_get_session	public	experimental	kernel/execution/execution.sh
 execution	stoleus_execution_reset	public	stable	kernel/execution/execution.sh
 api	stoleus_api_initialize	public	stable	kernel/api/api.sh

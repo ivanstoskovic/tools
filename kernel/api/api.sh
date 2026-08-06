@@ -1152,6 +1152,7 @@ stoleus_api_register_defaults() {
     stoleus_api_register execution stoleus_execution_initialize internal internal kernel/execution/execution.sh
     stoleus_api_register execution stoleus_execution_execute_plan public stable kernel/execution/execution.sh
     stoleus_api_register execution stoleus_execution_get_results public stable kernel/execution/execution.sh
+    stoleus_api_register execution stoleus_execution_get_detailed_results public experimental kernel/execution/execution.sh
     stoleus_api_register execution stoleus_execution_get_session public experimental kernel/execution/execution.sh
     stoleus_api_register execution stoleus_execution_reset public stable kernel/execution/execution.sh
 
