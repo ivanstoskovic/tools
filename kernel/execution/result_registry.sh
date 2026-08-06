@@ -210,6 +210,110 @@ stoleus_execution_result_registry_append() {
 
 
 # ==============================================================================
+# stoleus_execution_result_registry_get_field
+# ==============================================================================
+#
+# Arguments:
+#
+#     $1 = execution ID
+#     $2 = step number
+#     $3 = field name
+# ==============================================================================
+
+stoleus_execution_result_registry_get_field() {
+
+    local execution_id="${1:-}"
+    local step_number="${2:-}"
+    local field_name="${3:-}"
+
+    local result_id=""
+
+
+    if [[ -z "$execution_id" ||
+          -z "$step_number" ||
+          -z "$field_name" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Execution result lookup requires execution ID, step number, and field name." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$step_number" =~ ^[1-9][0-9]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Execution result step number must be a positive integer: ${step_number}" \
+            >&2
+
+        return 6
+    fi
+
+
+    result_id="${execution_id}@${step_number}"
+
+
+    if ! stoleus_metadata_collection_contains \
+        "$STOLEUS_EXECUTION_RESULT_COLLECTION_ID" \
+        "$result_id"; then
+
+        printf '%s\n' \
+            "ERROR: Unknown execution result: ${result_id}" >&2
+
+        return 6
+    fi
+
+
+    stoleus_metadata_collection_get_field \
+        "$STOLEUS_EXECUTION_RESULT_COLLECTION_ID" \
+        "$result_id" \
+        "$field_name"
+
+    return $?
+}
+
+
+# ==============================================================================
+# stoleus_execution_result_registry_is_successful
+# ==============================================================================
+#
+# Return codes:
+#
+#     0 = result exists and status is succeeded
+#     1 = result exists but status is not succeeded
+#     2 = invalid arguments
+#     6 = result does not exist or metadata is invalid
+# ==============================================================================
+
+stoleus_execution_result_registry_is_successful() {
+
+    local execution_id="${1:-}"
+    local step_number="${2:-}"
+
+    local status=""
+
+
+    if [[ -z "$execution_id" ||
+          -z "$step_number" ]]; then
+
+        return 2
+    fi
+
+
+    status="$(
+        stoleus_execution_result_registry_get_field \
+            "$execution_id" \
+            "$step_number" \
+            "status"
+    )" || return $?
+
+
+    [[ "$status" == "succeeded" ]]
+}
+
+
+# ==============================================================================
 # stoleus_execution_result_registry_get_count
 # ==============================================================================
 

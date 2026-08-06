@@ -132,6 +132,10 @@ source "${STOLEUS_KERNEL_ROOT}/runtime/runtime.sh"
 source "${STOLEUS_KERNEL_ROOT}/context/context.sh"
 source "${STOLEUS_KERNEL_ROOT}/platform/platform.sh"
 source "${STOLEUS_KERNEL_ROOT}/metadata/collection.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/plan.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/builder.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/planner.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
@@ -191,6 +195,10 @@ stoleus_kernel_initialize() {
     stoleus_context_initialize || return $?
     stoleus_platform_initialize || return $?
     stoleus_metadata_initialize || return $?
+    stoleus_rollback_registry_initialize || return $?
+    stoleus_rollback_plan_initialize || return $?
+    stoleus_rollback_builder_initialize || return $?
+    stoleus_rollback_planner_initialize || return $?
     stoleus_discovery_initialize || return $?
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?

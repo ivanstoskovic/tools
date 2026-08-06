@@ -80,6 +80,8 @@ declare -a STOLEUS_EXECUTION_RESULT_EXIT_CODES=()
 
 STOLEUS_EXECUTION_SESSION_ID=""
 STOLEUS_EXECUTION_SESSION_MODE="execute"
+STOLEUS_EXECUTION_SESSION_FAILURE_POLICY="stop"
+STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT=0
 STOLEUS_EXECUTION_SESSION_STATUS="not-started"
 STOLEUS_EXECUTION_SESSION_TARGET=""
 STOLEUS_EXECUTION_SESSION_OPERATION=""
@@ -98,9 +100,7 @@ STOLEUS_EXECUTION_SESSION_GENERATION=0
 
 stoleus_execution_reset() {
 
-    # Compatibility projection. The Metadata Collection registry is now the
-    # authoritative result store, but these arrays remain available while
-    # existing consumers migrate.
+    # Compatibility projection. The Execution Result Registry is authoritative.
     STOLEUS_EXECUTION_RESULT_STEP_NUMBERS=()
     STOLEUS_EXECUTION_RESULT_PLUGIN_IDS=()
     STOLEUS_EXECUTION_RESULT_STAGES=()
@@ -116,6 +116,7 @@ stoleus_execution_reset() {
 
     STOLEUS_EXECUTION_SESSION_ID=""
     STOLEUS_EXECUTION_SESSION_MODE="execute"
+    STOLEUS_EXECUTION_SESSION_FAILURE_POLICY="stop"
     STOLEUS_EXECUTION_SESSION_STATUS="not-started"
     STOLEUS_EXECUTION_SESSION_TARGET=""
     STOLEUS_EXECUTION_SESSION_OPERATION=""
@@ -123,6 +124,7 @@ stoleus_execution_reset() {
     STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
     STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
     STOLEUS_EXECUTION_SESSION_TOTAL_STEPS=0
+    STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT=0
     STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
 
 
@@ -264,6 +266,7 @@ STOLEUS_EXECUTION_SESSION_GENERATION + 1\
 stoleus_execution_start_session() {
 
     local execution_mode="${1:-execute}"
+    local failure_policy="${2:-stop}"
 
 
     case "$execution_mode" in
@@ -275,6 +278,23 @@ stoleus_execution_start_session() {
 
             printf '%s\n' \
                 "ERROR: Unsupported execution mode: ${execution_mode}" >&2
+
+            return 2
+
+            ;;
+    esac
+
+
+    case "$failure_policy" in
+
+        stop|continue)
+            ;;
+
+        *)
+
+            printf '%s\n' \
+                "ERROR: Unsupported execution failure policy: ${failure_policy}" \
+                >&2
 
             return 2
 
@@ -297,9 +317,12 @@ stoleus_execution_start_session() {
 
 
     STOLEUS_EXECUTION_SESSION_MODE="$execution_mode"
+    STOLEUS_EXECUTION_SESSION_FAILURE_POLICY="$failure_policy"
     STOLEUS_EXECUTION_SESSION_STATUS="running"
+
     STOLEUS_EXECUTION_SESSION_TARGET="${STOLEUS_PLANNING_REQUEST_TARGET:-}"
     STOLEUS_EXECUTION_SESSION_OPERATION="${STOLEUS_PLANNING_REQUEST_OPERATION:-}"
+
     STOLEUS_EXECUTION_SESSION_STARTED_AT="$(
         stoleus_execution_now
     )" || return $?
@@ -307,6 +330,7 @@ stoleus_execution_start_session() {
     STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
     STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
     STOLEUS_EXECUTION_SESSION_TOTAL_STEPS="${#STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"
+    STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT=0
     STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
 
 
@@ -407,9 +431,10 @@ stoleus_execution_get_session() {
     fi
 
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$STOLEUS_EXECUTION_SESSION_ID" \
         "$STOLEUS_EXECUTION_SESSION_MODE" \
+        "$STOLEUS_EXECUTION_SESSION_FAILURE_POLICY" \
         "$STOLEUS_EXECUTION_SESSION_STATUS" \
         "$STOLEUS_EXECUTION_SESSION_TARGET" \
         "$STOLEUS_EXECUTION_SESSION_OPERATION" \
@@ -417,6 +442,7 @@ stoleus_execution_get_session() {
         "$STOLEUS_EXECUTION_SESSION_FINISHED_AT" \
         "$STOLEUS_EXECUTION_SESSION_CURRENT_STEP" \
         "$STOLEUS_EXECUTION_SESSION_TOTAL_STEPS" \
+        "$STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT" \
         "$STOLEUS_EXECUTION_SESSION_EXIT_CODE"
 
     return 0
@@ -702,29 +728,134 @@ stoleus_execution_execute_step() {
 stoleus_execution_execute_plan() {
 
     local execution_mode="execute"
+    local failure_policy="stop"
+
+    local dry_run_seen="false"
+    local failure_policy_seen="false"
+
     local argument=""
+    local policy_value=""
+
     local step_index=0
     local exit_code=0
+    local first_failure_exit_code=0
+    local failed_step_count=0
 
 
-    if (( $# > 1 )); then
-
-        printf '%s\n' \
-            "ERROR: Execution accepts at most one mode argument." >&2
-
-        return 2
-    fi
-
-
-    if (( $# == 1 )); then
+    # --------------------------------------------------------------------------
+    # Parse execution options.
+    # --------------------------------------------------------------------------
+    while (( $# > 0 )); do
 
         argument="$1"
 
         case "$argument" in
 
             --dry-run)
+
+                if [[ "$dry_run_seen" == "true" ]]; then
+
+                    printf '%s\n' \
+                        "ERROR: --dry-run may be supplied only once." >&2
+
+                    return 2
+                fi
+
+
+                dry_run_seen="true"
                 execution_mode="dry-run"
+
+                shift
+
                 ;;
+
+
+            --failure-policy)
+
+                if [[ "$failure_policy_seen" == "true" ]]; then
+
+                    printf '%s\n' \
+                        "ERROR: --failure-policy may be supplied only once." \
+                        >&2
+
+                    return 2
+                fi
+
+
+                if (( $# < 2 )); then
+
+                    printf '%s\n' \
+                        "ERROR: --failure-policy requires a value." >&2
+
+                    return 2
+                fi
+
+
+                policy_value="$2"
+
+                case "$policy_value" in
+
+                    stop|continue)
+                        failure_policy="$policy_value"
+                        ;;
+
+                    *)
+
+                        printf '%s\n' \
+                            "ERROR: Unsupported execution failure policy: ${policy_value}" \
+                            >&2
+
+                        return 2
+
+                        ;;
+                esac
+
+
+                failure_policy_seen="true"
+
+                shift 2
+
+                ;;
+
+
+            --failure-policy=*)
+
+                if [[ "$failure_policy_seen" == "true" ]]; then
+
+                    printf '%s\n' \
+                        "ERROR: --failure-policy may be supplied only once." \
+                        >&2
+
+                    return 2
+                fi
+
+
+                policy_value="${argument#--failure-policy=}"
+
+                case "$policy_value" in
+
+                    stop|continue)
+                        failure_policy="$policy_value"
+                        ;;
+
+                    *)
+
+                        printf '%s\n' \
+                            "ERROR: Unsupported execution failure policy: ${policy_value}" \
+                            >&2
+
+                        return 2
+
+                        ;;
+                esac
+
+
+                failure_policy_seen="true"
+
+                shift
+
+                ;;
+
 
             *)
 
@@ -735,7 +866,7 @@ stoleus_execution_execute_plan() {
 
                 ;;
         esac
-    fi
+    done
 
 
     if [[ "${STOLEUS_EXECUTION_INITIALIZED:-false}" != "true" ]]; then
@@ -765,10 +896,14 @@ stoleus_execution_execute_plan() {
 
 
     stoleus_execution_start_session \
-        "$execution_mode" ||
+        "$execution_mode" \
+        "$failure_policy" ||
         return $?
 
 
+    # --------------------------------------------------------------------------
+    # Execute every frozen step in plan order.
+    # --------------------------------------------------------------------------
     for step_index in "${!STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"; do
 
         STOLEUS_EXECUTION_SESSION_CURRENT_STEP="$((step_index + 1))"
@@ -785,24 +920,58 @@ stoleus_execution_execute_plan() {
         fi
 
 
-        if (( exit_code != 0 )); then
-
-            STOLEUS_EXECUTION_COMPLETED="true"
-            STOLEUS_EXECUTION_SUCCEEDED="false"
-
-
-            stoleus_execution_complete_session \
-                "failed" \
-                "$exit_code" ||
-                return $?
-
-
-            return "$exit_code"
+        if (( exit_code == 0 )); then
+            continue
         fi
+
+
+        failed_step_count="$((failed_step_count + 1))"
+
+        STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT="$failed_step_count"
+
+
+        if (( first_failure_exit_code == 0 )); then
+            first_failure_exit_code="$exit_code"
+        fi
+
+
+        if [[ "$failure_policy" == "continue" ]]; then
+            continue
+        fi
+
+
+        STOLEUS_EXECUTION_COMPLETED="true"
+        STOLEUS_EXECUTION_SUCCEEDED="false"
+
+
+        stoleus_execution_complete_session \
+            "failed" \
+            "$first_failure_exit_code" ||
+            return $?
+
+
+        return "$first_failure_exit_code"
     done
 
 
     STOLEUS_EXECUTION_COMPLETED="true"
+
+
+    if (( failed_step_count > 0 )); then
+
+        STOLEUS_EXECUTION_SUCCEEDED="false"
+
+
+        stoleus_execution_complete_session \
+            "failed" \
+            "$first_failure_exit_code" ||
+            return $?
+
+
+        return "$first_failure_exit_code"
+    fi
+
+
     STOLEUS_EXECUTION_SUCCEEDED="true"
 
 

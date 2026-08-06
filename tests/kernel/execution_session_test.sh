@@ -127,6 +127,8 @@ session="$(
 
 IFS=$'\t' read -r \
     execution_id \
+    mode \
+    failure_policy \
     status \
     target \
     operation \
@@ -134,6 +136,7 @@ IFS=$'\t' read -r \
     finished_at \
     current_step \
     total_steps \
+    failed_step_count \
     exit_code \
     <<< "$session"
 
@@ -141,6 +144,20 @@ IFS=$'\t' read -r \
 if [[ -z "$execution_id" ]]; then
     fail "Execution session ID should not be empty."
 fi
+
+
+assert_equals \
+    "execute" \
+    "$mode" \
+    "Successful execution session mode is incorrect."
+
+
+assert_equals \
+    "stop" \
+    "$failure_policy" \
+    "Default execution failure policy is incorrect."
+
+
 
 
 assert_equals \
@@ -277,6 +294,8 @@ failed_session="$(
 
 IFS=$'\t' read -r \
     failed_execution_id \
+    failed_mode \
+    failed_failure_policy \
     failed_status \
     failed_target \
     failed_operation \
@@ -284,8 +303,23 @@ IFS=$'\t' read -r \
     failed_finished_at \
     failed_current_step \
     failed_total_steps \
+    failed_step_count \
     failed_exit_code \
     <<< "$failed_session"
+
+
+assert_equals \
+    "execute" \
+    "$failed_mode" \
+    "Failed execution session mode is incorrect."
+
+
+assert_equals \
+    "stop" \
+    "$failed_failure_policy" \
+    "Failed execution default policy is incorrect."
+
+
 
 
 assert_equals \

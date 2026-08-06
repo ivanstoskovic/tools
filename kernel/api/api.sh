@@ -1140,6 +1140,29 @@ stoleus_api_register_defaults() {
     stoleus_api_register planning stoleus_planning_get_lifecycle_function internal internal kernel/planning/planning.sh
     stoleus_api_register planning stoleus_planning_reset public stable kernel/planning/planning.sh
 
+    # Rollback Plan
+    stoleus_api_register rollback-plan stoleus_rollback_plan_initialize internal internal kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_append internal internal kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_freeze internal internal kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_contains public experimental kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_get_field public experimental kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_get_count public experimental kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_list public experimental kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_is_frozen public experimental kernel/rollback/plan.sh
+    stoleus_api_register rollback-plan stoleus_rollback_plan_reset public experimental kernel/rollback/plan.sh
+
+    # Rollback Registry
+    stoleus_api_register rollback-registry stoleus_rollback_registry_initialize internal internal kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_register internal internal kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_freeze internal internal kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_contains public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_get_function public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_get_field public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_get_count public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_list public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_is_frozen public experimental kernel/rollback/registry.sh
+    stoleus_api_register rollback-registry stoleus_rollback_registry_reset public experimental kernel/rollback/registry.sh
+
     # Lifecycle
     stoleus_api_register lifecycle stoleus_lifecycle_initialize internal internal kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_load_plugin public stable kernel/lifecycle/lifecycle.sh
@@ -1147,6 +1170,10 @@ stoleus_api_register_defaults() {
     stoleus_api_register lifecycle stoleus_lifecycle_invoke internal internal kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_get_loaded public stable kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_reset public stable kernel/lifecycle/lifecycle.sh
+
+    # Execution Result Registry
+    stoleus_api_register execution-result-registry stoleus_execution_result_registry_get_field internal internal kernel/execution/result_registry.sh
+    stoleus_api_register execution-result-registry stoleus_execution_result_registry_is_successful internal internal kernel/execution/result_registry.sh
 
     # Execution
     stoleus_api_register execution stoleus_execution_initialize internal internal kernel/execution/execution.sh
