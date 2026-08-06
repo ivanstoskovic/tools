@@ -135,6 +135,10 @@ stoleus_plugin_dependencies \
 stoleus_plugin_capabilities \
     "service-manager"
 
+stoleus_plugin_provides_capabilities \
+    "package-manager" \
+    "service-manager"
+
 stoleus_plugin_lifecycle \
     "configure" \
     "server_configure"

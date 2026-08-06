@@ -63,6 +63,10 @@ STOLEUS_MANIFEST_DESCRIPTION=""
 STOLEUS_MANIFEST_IMPLEMENTATION=""
 STOLEUS_MANIFEST_DEPENDENCIES=""
 STOLEUS_MANIFEST_CAPABILITIES=""
+STOLEUS_MANIFEST_PROVIDED_CAPABILITIES=""
+
+declare -A STOLEUS_MANIFEST_REQUIRED_CAPABILITY_SET=()
+declare -A STOLEUS_MANIFEST_PROVIDED_CAPABILITY_SET=()
 
 STOLEUS_MANIFEST_REQUIRED_SERVICES=""
 STOLEUS_MANIFEST_PROVIDED_SERVICES=""
@@ -96,6 +100,10 @@ stoleus_manifest_bash_reset() {
     STOLEUS_MANIFEST_IMPLEMENTATION=""
     STOLEUS_MANIFEST_DEPENDENCIES=""
     STOLEUS_MANIFEST_CAPABILITIES=""
+    STOLEUS_MANIFEST_PROVIDED_CAPABILITIES=""
+
+    STOLEUS_MANIFEST_REQUIRED_CAPABILITY_SET=()
+    STOLEUS_MANIFEST_PROVIDED_CAPABILITY_SET=()
 
     STOLEUS_MANIFEST_REQUIRED_SERVICES=""
     STOLEUS_MANIFEST_PROVIDED_SERVICES=""
@@ -291,12 +299,178 @@ stoleus_plugin_dependencies() {
 
 stoleus_plugin_capabilities() {
 
+    # --------------------------------------------------------------------------
+    # Compatibility alias.
+    #
+    # Historically this function declared capabilities required by a plugin.
+    # Preserve that behavior and route through the explicit DSL function.
+    # --------------------------------------------------------------------------
+    stoleus_plugin_requires_capabilities "$@"
+
+    return $?
+}
+
+
+# ==============================================================================
+# stoleus_plugin_requires_capabilities
+# ==============================================================================
+#
+# Purpose:
+#     Declare functional capabilities required by the current plugin.
+#
+# Arguments:
+#
+#     one or more capability IDs
+#
+# Normalized format:
+#
+#     capability-a,capability-b
+# ==============================================================================
+
+stoleus_plugin_requires_capabilities() {
+
+    local capability_id=""
+    local normalized=""
+
+
     stoleus_manifest_require_active || return $?
 
 
-    STOLEUS_MANIFEST_CAPABILITIES="$(
-        stoleus_manifest_join_values "$@"
-    )" || return $?
+    if (( $# == 0 )); then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_requires_capabilities requires at least one capability ID." \
+            >&2
+
+        return 2
+    fi
+
+
+    for capability_id in "$@"; do
+
+        if [[ ! "$capability_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+            printf '%s\n' \
+                "ERROR: Invalid required capability ID: ${capability_id}" \
+                >&2
+
+            return 6
+        fi
+
+
+        if [[ -n "${STOLEUS_MANIFEST_REQUIRED_CAPABILITY_SET[$capability_id]+declared}" ]]; then
+
+            printf '%s\n' \
+                "ERROR: Duplicate required capability declaration: ${capability_id}" \
+                >&2
+
+            return 8
+        fi
+
+
+        STOLEUS_MANIFEST_REQUIRED_CAPABILITY_SET["$capability_id"]="true"
+
+
+        if [[ -n "$normalized" ]]; then
+            normalized+=","
+        fi
+
+
+        normalized+="$capability_id"
+    done
+
+
+    if [[ -n "$STOLEUS_MANIFEST_CAPABILITIES" &&
+          -n "$normalized" ]]; then
+
+        STOLEUS_MANIFEST_CAPABILITIES+=","
+    fi
+
+
+    STOLEUS_MANIFEST_CAPABILITIES+="$normalized"
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_plugin_provides_capabilities
+# ==============================================================================
+#
+# Purpose:
+#     Declare functional capabilities supplied by the current plugin.
+#
+# Arguments:
+#
+#     one or more capability IDs
+#
+# Normalized format:
+#
+#     capability-a,capability-b
+# ==============================================================================
+
+stoleus_plugin_provides_capabilities() {
+
+    local capability_id=""
+    local normalized=""
+
+
+    stoleus_manifest_require_active || return $?
+
+
+    if (( $# == 0 )); then
+
+        printf '%s\n' \
+            "ERROR: stoleus_plugin_provides_capabilities requires at least one capability ID." \
+            >&2
+
+        return 2
+    fi
+
+
+    for capability_id in "$@"; do
+
+        if [[ ! "$capability_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+            printf '%s\n' \
+                "ERROR: Invalid provided capability ID: ${capability_id}" \
+                >&2
+
+            return 6
+        fi
+
+
+        if [[ -n "${STOLEUS_MANIFEST_PROVIDED_CAPABILITY_SET[$capability_id]+declared}" ]]; then
+
+            printf '%s\n' \
+                "ERROR: Duplicate provided capability declaration: ${capability_id}" \
+                >&2
+
+            return 8
+        fi
+
+
+        STOLEUS_MANIFEST_PROVIDED_CAPABILITY_SET["$capability_id"]="true"
+
+
+        if [[ -n "$normalized" ]]; then
+            normalized+=","
+        fi
+
+
+        normalized+="$capability_id"
+    done
+
+
+    if [[ -n "$STOLEUS_MANIFEST_PROVIDED_CAPABILITIES" &&
+          -n "$normalized" ]]; then
+
+        STOLEUS_MANIFEST_PROVIDED_CAPABILITIES+=","
+    fi
+
+
+    STOLEUS_MANIFEST_PROVIDED_CAPABILITIES+="$normalized"
 
 
     return 0
@@ -927,7 +1101,8 @@ stoleus_manifest_bash_load() {
         "$STOLEUS_MANIFEST_REQUIRED_SERVICES" \
         "$STOLEUS_MANIFEST_PROVIDED_SERVICES" \
         "$STOLEUS_MANIFEST_SERVICE_OPERATION_BINDINGS" \
-        "$STOLEUS_MANIFEST_SERVICE_CONDITIONS" ||
+        "$STOLEUS_MANIFEST_SERVICE_CONDITIONS" \
+        "$STOLEUS_MANIFEST_PROVIDED_CAPABILITIES" ||
         return $?
 
 

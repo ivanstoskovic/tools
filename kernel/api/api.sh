@@ -1003,6 +1003,8 @@ stoleus_api_register_defaults() {
     stoleus_api_register plugin-manifest stoleus_plugin_implementation dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_dependencies dsl stable kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_capabilities dsl stable kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_requires_capabilities dsl experimental kernel/definition/providers/bash.sh
+    stoleus_api_register plugin-manifest stoleus_plugin_provides_capabilities dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_requires_services dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_provides_service dsl experimental kernel/definition/providers/bash.sh
     stoleus_api_register plugin-manifest stoleus_plugin_service_operation dsl experimental kernel/definition/providers/bash.sh
@@ -1088,6 +1090,18 @@ stoleus_api_register_defaults() {
     stoleus_api_register service-runtime stoleus_service_get_operation public experimental kernel/service/runtime.sh
     stoleus_api_register service-runtime stoleus_service_runtime_get_last_call public experimental kernel/service/runtime.sh
     stoleus_api_register service-runtime stoleus_service_runtime_reset public experimental kernel/service/runtime.sh
+
+    # Capability Registry
+    stoleus_api_register capability-registry stoleus_capability_registry_initialize internal internal kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_import_plugins internal internal kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_contains public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_get_count public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_get_field public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_get_provider public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_list public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_list_providers public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_is_frozen public experimental kernel/capability/registry.sh
+    stoleus_api_register capability-registry stoleus_capability_registry_reset public experimental kernel/capability/registry.sh
 
     # Resolver
     stoleus_api_register resolver stoleus_resolver_initialize internal internal kernel/resolver/resolver.sh

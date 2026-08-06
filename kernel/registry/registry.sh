@@ -174,6 +174,7 @@ stoleus_registry_create_collection() {
         "implementation" \
         "dependencies" \
         "capabilities" \
+        "provided-capabilities" \
         "required-services" \
         "provided-services" \
         "service-operation-bindings" \
@@ -688,6 +689,7 @@ stoleus_registry_append_definition() {
         "${STOLEUS_DEFINITION_IMPLEMENTATIONS[$definition_index]}" \
         "${STOLEUS_DEFINITION_DEPENDENCIES[$definition_index]}" \
         "${STOLEUS_DEFINITION_CAPABILITIES[$definition_index]}" \
+        "${STOLEUS_DEFINITION_PROVIDED_CAPABILITIES[$definition_index]:-}" \
         "${STOLEUS_DEFINITION_REQUIRED_SERVICES[$definition_index]:-}" \
         "${STOLEUS_DEFINITION_PROVIDED_SERVICES[$definition_index]:-}" \
         "${STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS[$definition_index]:-}" \

@@ -67,6 +67,7 @@ declare -a STOLEUS_DEFINITION_PLUGIN_PATHS=()
 declare -a STOLEUS_DEFINITION_IMPLEMENTATIONS=()
 declare -a STOLEUS_DEFINITION_DEPENDENCIES=()
 declare -a STOLEUS_DEFINITION_CAPABILITIES=()
+declare -a STOLEUS_DEFINITION_PROVIDED_CAPABILITIES=()
 declare -a STOLEUS_DEFINITION_REQUIRED_SERVICES=()
 declare -a STOLEUS_DEFINITION_PROVIDED_SERVICES=()
 declare -a STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS=()
@@ -129,6 +130,7 @@ stoleus_definition_reset() {
     STOLEUS_DEFINITION_IMPLEMENTATIONS=()
     STOLEUS_DEFINITION_DEPENDENCIES=()
     STOLEUS_DEFINITION_CAPABILITIES=()
+    STOLEUS_DEFINITION_PROVIDED_CAPABILITIES=()
     STOLEUS_DEFINITION_REQUIRED_SERVICES=()
     STOLEUS_DEFINITION_PROVIDED_SERVICES=()
     STOLEUS_DEFINITION_SERVICE_OPERATION_BINDINGS=()
@@ -280,6 +282,8 @@ stoleus_definition_register() {
     local service_operation_bindings="${17:-}"
     local service_conditions="${18:-}"
 
+    local provided_capabilities="${19:-}"
+
 
     if stoleus_definition_is_frozen; then
 
@@ -428,7 +432,12 @@ stoleus_definition_register() {
     STOLEUS_DEFINITION_PLUGIN_PATHS+=("$plugin_path")
     STOLEUS_DEFINITION_IMPLEMENTATIONS+=("$implementation_path")
     STOLEUS_DEFINITION_DEPENDENCIES+=("$dependencies")
+
+    # Legacy `capabilities` remain the required-capability storage field.
     STOLEUS_DEFINITION_CAPABILITIES+=("$capabilities")
+    STOLEUS_DEFINITION_PROVIDED_CAPABILITIES+=(
+        "$provided_capabilities"
+    )
 
     STOLEUS_DEFINITION_REQUIRED_SERVICES+=("$required_services")
     STOLEUS_DEFINITION_PROVIDED_SERVICES+=("$provided_services")
