@@ -68,6 +68,27 @@ declare -a STOLEUS_EXECUTION_RESULT_EXIT_CODES=()
 
 
 # ==============================================================================
+# Execution Session State
+# ==============================================================================
+#
+# One process owns at most one active or completed execution session. Calling
+# stoleus_execution_reset clears the session and permits another plan execution.
+# ==============================================================================
+
+STOLEUS_EXECUTION_SESSION_ID=""
+STOLEUS_EXECUTION_SESSION_STATUS="not-started"
+STOLEUS_EXECUTION_SESSION_TARGET=""
+STOLEUS_EXECUTION_SESSION_OPERATION=""
+STOLEUS_EXECUTION_SESSION_STARTED_AT=""
+STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
+STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
+STOLEUS_EXECUTION_SESSION_TOTAL_STEPS=0
+STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
+
+STOLEUS_EXECUTION_SESSION_GENERATION=0
+
+
+# ==============================================================================
 # stoleus_execution_reset
 # ==============================================================================
 
@@ -83,6 +104,16 @@ stoleus_execution_reset() {
     STOLEUS_EXECUTION_STARTED="false"
     STOLEUS_EXECUTION_COMPLETED="false"
     STOLEUS_EXECUTION_SUCCEEDED="false"
+
+    STOLEUS_EXECUTION_SESSION_ID=""
+    STOLEUS_EXECUTION_SESSION_STATUS="not-started"
+    STOLEUS_EXECUTION_SESSION_TARGET=""
+    STOLEUS_EXECUTION_SESSION_OPERATION=""
+    STOLEUS_EXECUTION_SESSION_STARTED_AT=""
+    STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
+    STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
+    STOLEUS_EXECUTION_SESSION_TOTAL_STEPS=0
+    STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
 
 
     return 0
@@ -131,6 +162,196 @@ stoleus_execution_require_plan() {
         return 6
     fi
 
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_execution_now
+# ==============================================================================
+#
+# Output:
+#
+#     UTC timestamp in YYYY-MM-DDTHH:MM:SSZ format
+# ==============================================================================
+
+stoleus_execution_now() {
+
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+
+    return $?
+}
+
+
+# ==============================================================================
+# stoleus_execution_create_session_id
+# ==============================================================================
+
+stoleus_execution_create_session_id() {
+
+    local timestamp=""
+
+
+    STOLEUS_EXECUTION_SESSION_GENERATION="$((\
+STOLEUS_EXECUTION_SESSION_GENERATION + 1\
+))"
+
+
+    timestamp="$(
+        date -u '+%Y%m%dT%H%M%SZ'
+    )" || return $?
+
+
+    printf 'execution-%s-%s-%s\n' \
+        "$timestamp" \
+        "$$" \
+        "$STOLEUS_EXECUTION_SESSION_GENERATION"
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_execution_start_session
+# ==============================================================================
+
+stoleus_execution_start_session() {
+
+    if [[ "${STOLEUS_EXECUTION_SESSION_STATUS:-not-started}" != "not-started" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Execution session has already been started." >&2
+
+        return 8
+    fi
+
+
+    STOLEUS_EXECUTION_SESSION_ID="$(
+        stoleus_execution_create_session_id
+    )" || return $?
+
+
+    STOLEUS_EXECUTION_SESSION_STATUS="running"
+    STOLEUS_EXECUTION_SESSION_TARGET="${STOLEUS_PLANNING_REQUEST_TARGET:-}"
+    STOLEUS_EXECUTION_SESSION_OPERATION="${STOLEUS_PLANNING_REQUEST_OPERATION:-}"
+    STOLEUS_EXECUTION_SESSION_STARTED_AT="$(
+        stoleus_execution_now
+    )" || return $?
+
+    STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
+    STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
+    STOLEUS_EXECUTION_SESSION_TOTAL_STEPS="${#STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"
+    STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_execution_complete_session
+# ==============================================================================
+#
+# Arguments:
+#
+#     $1 = final status: succeeded or failed
+#     $2 = final exit code
+# ==============================================================================
+
+stoleus_execution_complete_session() {
+
+    local final_status="${1:-}"
+    local exit_code="${2:-}"
+
+
+    case "$final_status" in
+
+        succeeded|failed)
+            ;;
+
+        *)
+
+            printf '%s\n' \
+                "ERROR: Unsupported execution-session final status: ${final_status}" \
+                >&2
+
+            return 2
+
+            ;;
+    esac
+
+
+    if [[ -z "$exit_code" ||
+          ! "$exit_code" =~ ^[0-9]+$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Execution-session completion requires a numeric exit code." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ "${STOLEUS_EXECUTION_SESSION_STATUS:-not-started}" != "running" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Only a running execution session can be completed." >&2
+
+        return 8
+    fi
+
+
+    STOLEUS_EXECUTION_SESSION_STATUS="$final_status"
+    STOLEUS_EXECUTION_SESSION_FINISHED_AT="$(
+        stoleus_execution_now
+    )" || return $?
+
+    STOLEUS_EXECUTION_SESSION_EXIT_CODE="$exit_code"
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_execution_get_session
+# ==============================================================================
+#
+# Output fields:
+#
+#     execution-id
+#     status
+#     target-plugin
+#     operation
+#     started-at
+#     finished-at
+#     current-step
+#     total-steps
+#     exit-code
+# ==============================================================================
+
+stoleus_execution_get_session() {
+
+    if [[ -z "${STOLEUS_EXECUTION_SESSION_ID:-}" ]]; then
+
+        printf '%s\n' \
+            "ERROR: No execution session exists." >&2
+
+        return 6
+    fi
+
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$STOLEUS_EXECUTION_SESSION_ID" \
+        "$STOLEUS_EXECUTION_SESSION_STATUS" \
+        "$STOLEUS_EXECUTION_SESSION_TARGET" \
+        "$STOLEUS_EXECUTION_SESSION_OPERATION" \
+        "$STOLEUS_EXECUTION_SESSION_STARTED_AT" \
+        "$STOLEUS_EXECUTION_SESSION_FINISHED_AT" \
+        "$STOLEUS_EXECUTION_SESSION_CURRENT_STEP" \
+        "$STOLEUS_EXECUTION_SESSION_TOTAL_STEPS" \
+        "$STOLEUS_EXECUTION_SESSION_EXIT_CODE"
 
     return 0
 }
@@ -353,6 +574,9 @@ stoleus_execution_execute_plan() {
     STOLEUS_EXECUTION_STARTED="true"
 
 
+    stoleus_execution_start_session || return $?
+
+
     # --------------------------------------------------------------------------
     # Execute every frozen plan step in exact plan order.
     #
@@ -361,12 +585,14 @@ stoleus_execution_execute_plan() {
     # --------------------------------------------------------------------------
     for step_index in "${!STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"; do
 
+        STOLEUS_EXECUTION_SESSION_CURRENT_STEP="$((step_index + 1))"
+
+
         if stoleus_execution_execute_step "$step_index"; then
 
             exit_code=0
 
         else
-
             exit_code=$?
         fi
 
@@ -376,6 +602,13 @@ stoleus_execution_execute_plan() {
             STOLEUS_EXECUTION_COMPLETED="true"
             STOLEUS_EXECUTION_SUCCEEDED="false"
 
+
+            stoleus_execution_complete_session \
+                "failed" \
+                "$exit_code" ||
+                return $?
+
+
             return "$exit_code"
         fi
     done
@@ -383,6 +616,12 @@ stoleus_execution_execute_plan() {
 
     STOLEUS_EXECUTION_COMPLETED="true"
     STOLEUS_EXECUTION_SUCCEEDED="true"
+
+
+    stoleus_execution_complete_session \
+        "succeeded" \
+        "0" ||
+        return $?
 
 
     return 0
