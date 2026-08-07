@@ -77,6 +77,30 @@ assert_equals \
     "Runtime duration calculation is incorrect."
 
 
+runtime_id="$(
+    stoleus_runtime_create_id \
+        "execution" \
+        "7"
+)"
+
+
+if [[ ! "$runtime_id" =~ ^execution-[0-9]{8}T[0-9]{6}[0-9]*-[0-9]+-7$ ]]; then
+    fail "Runtime generated ID format is incorrect: ${runtime_id}"
+fi
+
+
+runtime_id_without_discriminator="$(
+    stoleus_runtime_create_id \
+        "rollback"
+)"
+
+
+if [[ ! "$runtime_id_without_discriminator" =~ ^rollback-[0-9]{8}T[0-9]{6}[0-9]*-[0-9]+$ ]]; then
+    fail \
+        "Runtime generated ID without discriminator is incorrect: ${runtime_id_without_discriminator}"
+fi
+
+
 assert_equals \
     "0" \
     "$(stoleus_runtime_duration_ms "1250" "1000")" \

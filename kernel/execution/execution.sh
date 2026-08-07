@@ -230,25 +230,16 @@ stoleus_execution_now_ms() {
 
 stoleus_execution_create_session_id() {
 
-    local timestamp=""
-
-
     STOLEUS_EXECUTION_SESSION_GENERATION="$((\
 STOLEUS_EXECUTION_SESSION_GENERATION + 1\
 ))"
 
 
-    timestamp="$(
-        date -u '+%Y%m%dT%H%M%SZ'
-    )" || return $?
-
-
-    printf 'execution-%s-%s-%s\n' \
-        "$timestamp" \
-        "$$" \
+    stoleus_runtime_create_id \
+        "execution" \
         "$STOLEUS_EXECUTION_SESSION_GENERATION"
 
-    return 0
+    return $?
 }
 
 

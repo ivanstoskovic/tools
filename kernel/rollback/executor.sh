@@ -550,19 +550,10 @@ stoleus_rollback_executor_execute_step() {
 
 stoleus_rollback_executor_create_session_id() {
 
-    local timestamp=""
+    stoleus_runtime_create_id \
+        "rollback"
 
-
-    timestamp="$(
-        date -u '+%Y%m%dT%H%M%S%N'
-    )" || return $?
-
-
-    printf 'rollback-%s-%s\n' \
-        "$timestamp" \
-        "$$"
-
-    return 0
+    return $?
 }
 
 

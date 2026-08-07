@@ -93,6 +93,93 @@ stoleus_runtime_now_ms() {
 
 
 # ==============================================================================
+# stoleus_runtime_create_id
+# ==============================================================================
+#
+# Arguments:
+#
+#     $1 = identifier prefix
+#     $2 = optional discriminator
+#
+# Output:
+#
+#     <prefix>-<UTC timestamp>-<PID>[-<discriminator>]
+# ==============================================================================
+
+stoleus_runtime_create_id() {
+
+    local prefix="${1:-}"
+    local discriminator="${2:-}"
+
+    local timestamp=""
+
+
+    if [[ -z "$prefix" ||
+          ! "$prefix" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Runtime ID creation requires a valid prefix." >&2
+
+        return 2
+    fi
+
+
+    if [[ -n "$discriminator" &&
+          ! "$discriminator" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Runtime ID discriminator is invalid: ${discriminator}" \
+            >&2
+
+        return 2
+    fi
+
+
+    timestamp="$(
+        date -u '+%Y%m%dT%H%M%S%N'
+    )" || return $?
+
+
+    if [[ ! "$timestamp" =~ ^[0-9]{8}T[0-9]{6}[0-9]+$ ]]; then
+
+        # Some date implementations may not support %N.
+        timestamp="$(
+            date -u '+%Y%m%dT%H%M%S'
+        )" || return $?
+
+
+        if [[ ! "$timestamp" =~ ^[0-9]{8}T[0-9]{6}$ ]]; then
+
+            printf '%s\n' \
+                "ERROR: Runtime clock returned an invalid ID timestamp." >&2
+
+            return 6
+        fi
+    fi
+
+
+    if [[ -n "$discriminator" ]]; then
+
+        printf '%s-%s-%s-%s\n' \
+            "$prefix" \
+            "$timestamp" \
+            "$$" \
+            "$discriminator"
+
+    else
+
+        printf '%s-%s-%s\n' \
+            "$prefix" \
+            "$timestamp" \
+            "$$"
+    fi
+
+
+    return 0
+}
+
+
+# ==============================================================================
 # stoleus_runtime_duration_ms
 # ==============================================================================
 #

@@ -962,6 +962,10 @@ stoleus_api_register_defaults() {
 
     # Runtime
     stoleus_api_register runtime stoleus_runtime_initialize internal internal kernel/runtime/runtime.sh
+    stoleus_api_register runtime stoleus_runtime_create_id internal internal kernel/runtime/runtime.sh
+    stoleus_api_register runtime stoleus_runtime_now internal internal kernel/runtime/runtime.sh
+    stoleus_api_register runtime stoleus_runtime_now_ms internal internal kernel/runtime/runtime.sh
+    stoleus_api_register runtime stoleus_runtime_duration_ms internal internal kernel/runtime/runtime.sh
 
     # Metadata
     stoleus_api_register metadata stoleus_metadata_initialize public stable kernel/metadata/collection.sh
