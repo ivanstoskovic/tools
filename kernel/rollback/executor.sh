@@ -315,7 +315,7 @@ stoleus_rollback_executor_get_status() {
 
 stoleus_rollback_executor_now() {
 
-    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    stoleus_runtime_now
 
     return $?
 }
@@ -332,24 +332,9 @@ stoleus_rollback_executor_now() {
 
 stoleus_rollback_executor_now_ms() {
 
-    local timestamp=""
+    stoleus_runtime_now_ms
 
-
-    if timestamp="$(date +%s%3N 2>/dev/null)" &&
-       [[ "$timestamp" =~ ^[0-9]+$ ]]; then
-
-        printf '%s\n' "$timestamp"
-
-        return 0
-    fi
-
-
-    timestamp="$(date +%s)" || return $?
-
-
-    printf '%s\n' "$((timestamp * 1000))"
-
-    return 0
+    return $?
 }
 
 
@@ -535,11 +520,9 @@ stoleus_rollback_executor_execute_step() {
     )" || return $?
 
 
-    duration_ms="$((finished_ms - started_ms))"
-
-    if (( duration_ms < 0 )); then
-        duration_ms=0
-    fi
+    duration_ms="$(
+        stoleus_runtime_duration_ms             "$started_ms"             "$finished_ms"
+    )" || return $?
 
 
     stoleus_rollback_result_registry_append \

@@ -198,7 +198,7 @@ stoleus_execution_require_plan() {
 
 stoleus_execution_now() {
 
-    date -u '+%Y-%m-%dT%H:%M:%SZ'
+    stoleus_runtime_now
 
     return $?
 }
@@ -218,24 +218,9 @@ stoleus_execution_now() {
 
 stoleus_execution_now_ms() {
 
-    local timestamp=""
+    stoleus_runtime_now_ms
 
-
-    if timestamp="$(date +%s%3N 2>/dev/null)" &&
-       [[ "$timestamp" =~ ^[0-9]+$ ]]; then
-
-        printf '%s\n' "$timestamp"
-
-        return 0
-    fi
-
-
-    timestamp="$(date +%s)" || return $?
-
-
-    printf '%s\n' "$((timestamp * 1000))"
-
-    return 0
+    return $?
 }
 
 
