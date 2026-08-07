@@ -136,6 +136,8 @@ source "${STOLEUS_KERNEL_ROOT}/rollback/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/rollback/plan.sh"
 source "${STOLEUS_KERNEL_ROOT}/rollback/builder.sh"
 source "${STOLEUS_KERNEL_ROOT}/rollback/planner.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/result_registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/rollback/executor.sh"
 source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
@@ -151,6 +153,7 @@ source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
 source "${STOLEUS_KERNEL_ROOT}/lifecycle/lifecycle.sh"
 source "${STOLEUS_KERNEL_ROOT}/execution/execution.sh"
+source "${STOLEUS_KERNEL_ROOT}/execution/coordinator.sh"
 source "${STOLEUS_KERNEL_ROOT}/api/api.sh"
 
 
@@ -199,6 +202,8 @@ stoleus_kernel_initialize() {
     stoleus_rollback_plan_initialize || return $?
     stoleus_rollback_builder_initialize || return $?
     stoleus_rollback_planner_initialize || return $?
+    stoleus_rollback_result_registry_initialize || return $?
+    stoleus_rollback_executor_initialize || return $?
     stoleus_discovery_initialize || return $?
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?
@@ -214,6 +219,7 @@ stoleus_kernel_initialize() {
     stoleus_planning_initialize || return $?
     stoleus_lifecycle_initialize || return $?
     stoleus_execution_initialize || return $?
+    stoleus_execution_coordinator_initialize || return $?
     stoleus_api_initialize || return $?
 
 

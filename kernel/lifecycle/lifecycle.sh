@@ -296,6 +296,101 @@ stoleus_lifecycle_validate_plan_reference() {
 
 
 # ==============================================================================
+# stoleus_lifecycle_invoke_function
+# ==============================================================================
+#
+# Purpose:
+#     Safely invoke an arbitrary function from a registered plugin
+#     implementation.
+#
+# Arguments:
+#
+#     $1 = plugin ID
+#     $2 = Registry index
+#     $3 = function reference
+#     $4... = optional function arguments
+#
+# Unlike stoleus_lifecycle_invoke, this helper does not require the function to
+# match a standard lifecycle stage. It is intended for validated internal
+# operations such as compensating rollback actions.
+# ==============================================================================
+
+stoleus_lifecycle_invoke_function() {
+
+    local plugin_id="${1:-}"
+    local registry_index="${2:-}"
+    local function_reference="${3:-}"
+
+    local registered_plugin_id=""
+
+
+    if [[ -z "$plugin_id" ||
+          -z "$registry_index" ||
+          ! "$registry_index" =~ ^[0-9]+$ ||
+          -z "$function_reference" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Generic lifecycle invocation requires plugin ID, Registry index, and function reference." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$function_reference" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Invalid generic lifecycle function reference: ${function_reference}" \
+            >&2
+
+        return 6
+    fi
+
+
+    shift 3
+
+
+    stoleus_lifecycle_require_registry || return $?
+
+
+    registered_plugin_id="$(
+        stoleus_registry_get_id_by_index \
+            "$registry_index"
+    )" || return $?
+
+
+    if [[ "$registered_plugin_id" != "$plugin_id" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Generic lifecycle plugin ID and Registry index do not match: ${plugin_id}" \
+            >&2
+
+        return 8
+    fi
+
+
+    stoleus_lifecycle_load_plugin \
+        "$plugin_id" ||
+        return $?
+
+
+    if ! declare -F "$function_reference" >/dev/null 2>&1; then
+
+        printf '%s\n' \
+            "ERROR: Plugin '${plugin_id}' implementation does not define function: ${function_reference}" \
+            >&2
+
+        return 6
+    fi
+
+
+    "$function_reference" "$@"
+
+    return $?
+}
+
+
+# ==============================================================================
 # stoleus_lifecycle_invoke
 # ==============================================================================
 #

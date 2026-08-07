@@ -1140,6 +1140,14 @@ stoleus_api_register_defaults() {
     stoleus_api_register planning stoleus_planning_get_lifecycle_function internal internal kernel/planning/planning.sh
     stoleus_api_register planning stoleus_planning_reset public stable kernel/planning/planning.sh
 
+    # Rollback Executor
+    stoleus_api_register rollback-executor stoleus_rollback_executor_execute_step internal internal kernel/rollback/executor.sh
+    stoleus_api_register rollback-executor stoleus_rollback_executor_create_session_id internal internal kernel/rollback/executor.sh
+    stoleus_api_register rollback-executor stoleus_rollback_executor_execute_plan public experimental kernel/rollback/executor.sh
+    stoleus_api_register rollback-executor stoleus_rollback_executor_get_results public experimental kernel/rollback/executor.sh
+    stoleus_api_register rollback-executor stoleus_rollback_executor_get_detailed_results public experimental kernel/rollback/executor.sh
+    stoleus_api_register rollback-executor stoleus_rollback_executor_get_status public experimental kernel/rollback/executor.sh
+
     # Rollback Plan
     stoleus_api_register rollback-plan stoleus_rollback_plan_initialize internal internal kernel/rollback/plan.sh
     stoleus_api_register rollback-plan stoleus_rollback_plan_append internal internal kernel/rollback/plan.sh
@@ -1168,12 +1176,19 @@ stoleus_api_register_defaults() {
     stoleus_api_register lifecycle stoleus_lifecycle_load_plugin public stable kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_is_plugin_loaded public stable kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_invoke internal internal kernel/lifecycle/lifecycle.sh
+    stoleus_api_register lifecycle stoleus_lifecycle_invoke_function internal internal kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_get_loaded public stable kernel/lifecycle/lifecycle.sh
     stoleus_api_register lifecycle stoleus_lifecycle_reset public stable kernel/lifecycle/lifecycle.sh
 
     # Execution Result Registry
     stoleus_api_register execution-result-registry stoleus_execution_result_registry_get_field internal internal kernel/execution/result_registry.sh
     stoleus_api_register execution-result-registry stoleus_execution_result_registry_is_successful internal internal kernel/execution/result_registry.sh
+
+    # Execution Coordinator
+    stoleus_api_register execution-coordinator stoleus_execution_coordinator_initialize internal internal kernel/execution/coordinator.sh
+    stoleus_api_register execution-coordinator stoleus_execution_coordinator_finalize_success internal internal kernel/execution/coordinator.sh
+    stoleus_api_register execution-coordinator stoleus_execution_coordinator_finalize_failure internal internal kernel/execution/coordinator.sh
+    stoleus_api_register execution-coordinator stoleus_execution_coordinator_run_automatic_rollback internal internal kernel/execution/coordinator.sh
 
     # Execution
     stoleus_api_register execution stoleus_execution_initialize internal internal kernel/execution/execution.sh

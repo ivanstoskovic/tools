@@ -136,6 +136,10 @@ planning	stoleus_planning_get_request	public	stable	kernel/planning/planning.sh
 planning	stoleus_planning_get_plugins	public	stable	kernel/planning/planning.sh
 planning	stoleus_planning_get_steps	public	stable	kernel/planning/planning.sh
 planning	stoleus_planning_reset	public	stable	kernel/planning/planning.sh
+rollback-executor	stoleus_rollback_executor_execute_plan	public	experimental	kernel/rollback/executor.sh
+rollback-executor	stoleus_rollback_executor_get_results	public	experimental	kernel/rollback/executor.sh
+rollback-executor	stoleus_rollback_executor_get_detailed_results	public	experimental	kernel/rollback/executor.sh
+rollback-executor	stoleus_rollback_executor_get_status	public	experimental	kernel/rollback/executor.sh
 rollback-plan	stoleus_rollback_plan_contains	public	experimental	kernel/rollback/plan.sh
 rollback-plan	stoleus_rollback_plan_get_field	public	experimental	kernel/rollback/plan.sh
 rollback-plan	stoleus_rollback_plan_get_count	public	experimental	kernel/rollback/plan.sh

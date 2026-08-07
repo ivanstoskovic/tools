@@ -172,6 +172,10 @@ IFS=$'\t' read -r \
     stop_total_steps \
     stop_failed_step_count \
     stop_session_exit_code \
+    stop_automatic_rollback \
+    stop_rollback_attempted \
+    stop_rollback_status \
+    stop_rollback_exit_code \
     <<< "$stop_session"
 
 
@@ -274,6 +278,10 @@ IFS=$'\t' read -r \
     continue_total_steps \
     continue_failed_step_count \
     continue_session_exit_code \
+    continue_automatic_rollback \
+    continue_rollback_attempted \
+    continue_rollback_status \
+    continue_rollback_exit_code \
     <<< "$continue_session"
 
 

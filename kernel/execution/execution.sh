@@ -90,6 +90,10 @@ STOLEUS_EXECUTION_SESSION_FINISHED_AT=""
 STOLEUS_EXECUTION_SESSION_CURRENT_STEP=0
 STOLEUS_EXECUTION_SESSION_TOTAL_STEPS=0
 STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
+STOLEUS_EXECUTION_SESSION_AUTOMATIC_ROLLBACK="false"
+STOLEUS_EXECUTION_SESSION_ROLLBACK_ATTEMPTED="false"
+STOLEUS_EXECUTION_SESSION_ROLLBACK_STATUS="not-requested"
+STOLEUS_EXECUTION_SESSION_ROLLBACK_EXIT_CODE=0
 
 STOLEUS_EXECUTION_SESSION_GENERATION=0
 
@@ -126,6 +130,10 @@ stoleus_execution_reset() {
     STOLEUS_EXECUTION_SESSION_TOTAL_STEPS=0
     STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT=0
     STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
+    STOLEUS_EXECUTION_SESSION_AUTOMATIC_ROLLBACK="false"
+    STOLEUS_EXECUTION_SESSION_ROLLBACK_ATTEMPTED="false"
+    STOLEUS_EXECUTION_SESSION_ROLLBACK_STATUS="not-requested"
+    STOLEUS_EXECUTION_SESSION_ROLLBACK_EXIT_CODE=0
 
 
     return 0
@@ -267,46 +275,46 @@ stoleus_execution_start_session() {
 
     local execution_mode="${1:-execute}"
     local failure_policy="${2:-stop}"
+    local automatic_rollback="${3:-false}"
 
 
     case "$execution_mode" in
-
         execute|dry-run)
             ;;
-
         *)
-
             printf '%s\n' \
                 "ERROR: Unsupported execution mode: ${execution_mode}" >&2
-
             return 2
-
             ;;
     esac
 
 
     case "$failure_policy" in
-
         stop|continue)
             ;;
-
         *)
-
             printf '%s\n' \
                 "ERROR: Unsupported execution failure policy: ${failure_policy}" \
                 >&2
-
             return 2
+            ;;
+    esac
 
+
+    case "$automatic_rollback" in
+        true|false)
+            ;;
+        *)
+            printf '%s\n' \
+                "ERROR: Automatic rollback must be true or false." >&2
+            return 2
             ;;
     esac
 
 
     if [[ "${STOLEUS_EXECUTION_SESSION_STATUS:-not-started}" != "not-started" ]]; then
-
         printf '%s\n' \
             "ERROR: Execution session has already been started." >&2
-
         return 8
     fi
 
@@ -318,6 +326,7 @@ stoleus_execution_start_session() {
 
     STOLEUS_EXECUTION_SESSION_MODE="$execution_mode"
     STOLEUS_EXECUTION_SESSION_FAILURE_POLICY="$failure_policy"
+    STOLEUS_EXECUTION_SESSION_AUTOMATIC_ROLLBACK="$automatic_rollback"
     STOLEUS_EXECUTION_SESSION_STATUS="running"
 
     STOLEUS_EXECUTION_SESSION_TARGET="${STOLEUS_PLANNING_REQUEST_TARGET:-}"
@@ -332,6 +341,16 @@ stoleus_execution_start_session() {
     STOLEUS_EXECUTION_SESSION_TOTAL_STEPS="${#STOLEUS_PLAN_STEP_PLUGIN_IDS[@]}"
     STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT=0
     STOLEUS_EXECUTION_SESSION_EXIT_CODE=0
+
+    STOLEUS_EXECUTION_SESSION_ROLLBACK_ATTEMPTED="false"
+
+    if [[ "$automatic_rollback" == "true" ]]; then
+        STOLEUS_EXECUTION_SESSION_ROLLBACK_STATUS="not-needed"
+    else
+        STOLEUS_EXECUTION_SESSION_ROLLBACK_STATUS="not-requested"
+    fi
+
+    STOLEUS_EXECUTION_SESSION_ROLLBACK_EXIT_CODE=0
 
 
     return 0
@@ -431,7 +450,7 @@ stoleus_execution_get_session() {
     fi
 
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$STOLEUS_EXECUTION_SESSION_ID" \
         "$STOLEUS_EXECUTION_SESSION_MODE" \
         "$STOLEUS_EXECUTION_SESSION_FAILURE_POLICY" \
@@ -443,7 +462,11 @@ stoleus_execution_get_session() {
         "$STOLEUS_EXECUTION_SESSION_CURRENT_STEP" \
         "$STOLEUS_EXECUTION_SESSION_TOTAL_STEPS" \
         "$STOLEUS_EXECUTION_SESSION_FAILED_STEP_COUNT" \
-        "$STOLEUS_EXECUTION_SESSION_EXIT_CODE"
+        "$STOLEUS_EXECUTION_SESSION_EXIT_CODE" \
+        "$STOLEUS_EXECUTION_SESSION_AUTOMATIC_ROLLBACK" \
+        "$STOLEUS_EXECUTION_SESSION_ROLLBACK_ATTEMPTED" \
+        "$STOLEUS_EXECUTION_SESSION_ROLLBACK_STATUS" \
+        "$STOLEUS_EXECUTION_SESSION_ROLLBACK_EXIT_CODE"
 
     return 0
 }
@@ -729,9 +752,11 @@ stoleus_execution_execute_plan() {
 
     local execution_mode="execute"
     local failure_policy="stop"
+    local automatic_rollback="false"
 
     local dry_run_seen="false"
     local failure_policy_seen="false"
+    local automatic_rollback_seen="false"
 
     local argument=""
     local policy_value=""
@@ -764,6 +789,26 @@ stoleus_execution_execute_plan() {
 
                 dry_run_seen="true"
                 execution_mode="dry-run"
+
+                shift
+
+                ;;
+
+
+            --automatic-rollback)
+
+                if [[ "$automatic_rollback_seen" == "true" ]]; then
+
+                    printf '%s\n' \
+                        "ERROR: --automatic-rollback may be supplied only once." \
+                        >&2
+
+                    return 2
+                fi
+
+
+                automatic_rollback_seen="true"
+                automatic_rollback="true"
 
                 shift
 
@@ -897,7 +942,8 @@ stoleus_execution_execute_plan() {
 
     stoleus_execution_start_session \
         "$execution_mode" \
-        "$failure_policy" ||
+        "$failure_policy" \
+        "$automatic_rollback" ||
         return $?
 
 
@@ -940,12 +986,7 @@ stoleus_execution_execute_plan() {
         fi
 
 
-        STOLEUS_EXECUTION_COMPLETED="true"
-        STOLEUS_EXECUTION_SUCCEEDED="false"
-
-
-        stoleus_execution_complete_session \
-            "failed" \
+        stoleus_execution_coordinator_finalize_failure \
             "$first_failure_exit_code" ||
             return $?
 
@@ -954,16 +995,9 @@ stoleus_execution_execute_plan() {
     done
 
 
-    STOLEUS_EXECUTION_COMPLETED="true"
-
-
     if (( failed_step_count > 0 )); then
 
-        STOLEUS_EXECUTION_SUCCEEDED="false"
-
-
-        stoleus_execution_complete_session \
-            "failed" \
+        stoleus_execution_coordinator_finalize_failure \
             "$first_failure_exit_code" ||
             return $?
 
@@ -972,13 +1006,7 @@ stoleus_execution_execute_plan() {
     fi
 
 
-    STOLEUS_EXECUTION_SUCCEEDED="true"
-
-
-    stoleus_execution_complete_session \
-        "succeeded" \
-        "0" ||
-        return $?
+    stoleus_execution_coordinator_finalize_success || return $?
 
 
     return 0

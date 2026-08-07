@@ -138,6 +138,10 @@ IFS=$'\t' read -r \
     total_steps \
     failed_step_count \
     exit_code \
+    automatic_rollback \
+    rollback_attempted \
+    rollback_status \
+    rollback_exit_code \
     <<< "$session"
 
 
@@ -305,6 +309,10 @@ IFS=$'\t' read -r \
     failed_total_steps \
     failed_step_count \
     failed_exit_code \
+    failed_automatic_rollback \
+    failed_rollback_attempted \
+    failed_rollback_status \
+    failed_rollback_exit_code \
     <<< "$failed_session"
 
 
