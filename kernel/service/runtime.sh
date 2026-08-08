@@ -370,13 +370,11 @@ stoleus_service_call() {
     STOLEUS_SERVICE_LAST_FUNCTION="$operation_function"
 
 
-    set +e
-
-    "$operation_function" "$@"
-
-    exit_code=$?
-
-    set -e
+    if "$operation_function" "$@"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
 
 
     STOLEUS_SERVICE_LAST_EXIT_CODE="$exit_code"

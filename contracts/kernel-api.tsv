@@ -13,6 +13,10 @@ context	stoleus_context_clear_provider_override	public	experimental	kernel/conte
 context	stoleus_context_list_provider_overrides	public	experimental	kernel/context/context.sh
 context	stoleus_context_get_generation	public	experimental	kernel/context/context.sh
 context	stoleus_context_reset	public	experimental	kernel/context/context.sh
+context	stoleus_context_set_capability_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_get_capability_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_clear_capability_provider_override	public	experimental	kernel/context/context.sh
+context	stoleus_context_list_capability_provider_overrides	public	experimental	kernel/context/context.sh
 platform	stoleus_platform_detect	public	experimental	kernel/platform/platform.sh
 platform	stoleus_platform_apply_context	public	experimental	kernel/platform/platform.sh
 platform	stoleus_platform_refresh	public	experimental	kernel/platform/platform.sh

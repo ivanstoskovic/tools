@@ -950,6 +950,10 @@ stoleus_api_register_defaults() {
     stoleus_api_register context stoleus_context_list_provider_overrides public experimental kernel/context/context.sh
     stoleus_api_register context stoleus_context_get_generation public experimental kernel/context/context.sh
     stoleus_api_register context stoleus_context_reset public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_set_capability_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_get_capability_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_clear_capability_provider_override public experimental kernel/context/context.sh
+    stoleus_api_register context stoleus_context_list_capability_provider_overrides public experimental kernel/context/context.sh
 
     # Platform Detection
     stoleus_api_register platform stoleus_platform_initialize internal internal kernel/platform/platform.sh
@@ -1106,6 +1110,30 @@ stoleus_api_register_defaults() {
     stoleus_api_register capability-registry stoleus_capability_registry_list_providers public experimental kernel/capability/registry.sh
     stoleus_api_register capability-registry stoleus_capability_registry_is_frozen public experimental kernel/capability/registry.sh
     stoleus_api_register capability-registry stoleus_capability_registry_reset public experimental kernel/capability/registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_initialize internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_reset internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_register internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_contains internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_get_field internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_get_count internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-policy-registry stoleus_provider_policy_registry_list internal internal kernel/policy/provider_registry.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_initialize internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_get_policy_key internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_get_priority internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_is_enabled internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_select internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_matches_conditions internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_get_conditions internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-selection stoleus_provider_selection_get_selected internal internal kernel/policy/provider_selection.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_initialize internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_reset internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_append internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_get_count internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_get_field internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register provider-trace stoleus_provider_trace_list internal internal kernel/policy/provider_trace.sh
+    stoleus_api_register capability-policy stoleus_capability_policy_initialize internal internal kernel/capability/policy.sh
+    stoleus_api_register capability-policy stoleus_capability_policy_reset internal internal kernel/capability/policy.sh
+    stoleus_api_register capability-policy stoleus_capability_policy_select internal internal kernel/capability/policy.sh
 
     # Resolver
     stoleus_api_register resolver stoleus_resolver_initialize internal internal kernel/resolver/resolver.sh

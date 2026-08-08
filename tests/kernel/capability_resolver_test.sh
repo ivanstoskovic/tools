@@ -351,5 +351,157 @@ assert_equals \
     "Ambiguous capability providers should return conflict code 8."
 
 
+
+# ==============================================================================
+# Resolver delegates provider selection to Capability Policy.
+# ==============================================================================
+
+if ! grep -q \
+    'stoleus_capability_policy_select' \
+    "${PROJECT_ROOT}/kernel/capability/resolver.sh"; then
+
+    fail \
+        "Capability Resolver does not delegate selection to Capability Policy."
+fi
+
+
+
+# ==============================================================================
+# Explicit capability provider override resolves multiple providers.
+# ==============================================================================
+
+stoleus_capability_resolver_reset
+
+
+multiple_provider_capability=""
+
+
+for capability_candidate in \
+    "$(
+        stoleus_capability_registry_list |
+        cut -f2 |
+        sort |
+        uniq -d
+    )"
+do
+    if [[ -n "$capability_candidate" ]]; then
+        multiple_provider_capability="$capability_candidate"
+        break
+    fi
+done
+
+
+# The existing fixture may or may not expose a multi-provider capability.
+# If it does, verify override-driven resolution using the registered providers.
+if [[ -n "$multiple_provider_capability" ]]; then
+
+    mapfile -t override_candidates < <(
+        stoleus_capability_registry_list_providers \
+            "$multiple_provider_capability"
+    )
+
+
+    if (( ${#override_candidates[@]} >= 2 )); then
+
+        selected_override="${override_candidates[1]}"
+
+
+        stoleus_context_set_capability_provider_override \
+            "$multiple_provider_capability" \
+            "$selected_override"
+
+
+        resolved_override="$(
+            stoleus_capability_resolver_resolve \
+                "$multiple_provider_capability"
+        )"
+
+
+        assert_equals \
+            "${multiple_provider_capability}"$'\t'"${selected_override}" \
+            "$resolved_override" \
+            "Capability Resolver did not honor explicit provider override."
+
+
+        stoleus_context_clear_capability_provider_override \
+            "$multiple_provider_capability"
+    fi
+fi
+
+
+
+# ==============================================================================
+# Generic Provider Policy priority resolves capability provider conflict.
+# ==============================================================================
+
+stoleus_capability_resolver_reset
+
+
+priority_test_capability=""
+
+
+while IFS= read -r capability_candidate; do
+
+    [[ -z "$capability_candidate" ]] && continue
+
+
+    mapfile -t priority_candidates < <(
+        stoleus_capability_registry_list_providers \
+            "$capability_candidate"
+    )
+
+
+    if (( ${#priority_candidates[@]} >= 2 )); then
+
+        priority_test_capability="$capability_candidate"
+
+        break
+    fi
+
+done < <(
+    stoleus_capability_registry_list |
+        cut -f2 |
+        sort -u
+)
+
+
+if [[ -n "$priority_test_capability" ]]; then
+
+    stoleus_provider_policy_registry_reset
+
+
+    first_priority_provider="${priority_candidates[0]}"
+    second_priority_provider="${priority_candidates[1]}"
+
+
+    stoleus_provider_policy_registry_register \
+        "capability" \
+        "$priority_test_capability" \
+        "$first_priority_provider" \
+        "10" \
+        "true"
+
+
+    stoleus_provider_policy_registry_register \
+        "capability" \
+        "$priority_test_capability" \
+        "$second_priority_provider" \
+        "100" \
+        "true"
+
+
+    priority_resolution="$(
+        stoleus_capability_resolver_resolve \
+            "$priority_test_capability"
+    )"
+
+
+    assert_equals \
+        "${priority_test_capability}"$'\t'"${second_priority_provider}" \
+        "$priority_resolution" \
+        "Capability Resolver did not honor generic Provider Policy priority."
+fi
+
+
 printf '%s\n' \
     "PASS: Capability Resolver tests completed successfully."

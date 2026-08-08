@@ -54,6 +54,7 @@ declare -A STOLEUS_CONTEXT_INDEX_BY_KEY=()
 
 declare -A STOLEUS_CONTEXT_PROVIDER_OVERRIDES=()
 
+declare -A STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES=()
 STOLEUS_CONTEXT_GENERATION=0
 
 
@@ -112,6 +113,7 @@ stoleus_context_reset() {
 
     STOLEUS_CONTEXT_PROVIDER_OVERRIDES=()
 
+    STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES=()
     stoleus_context_increment_generation || return $?
 
 
@@ -337,6 +339,136 @@ stoleus_context_matches_conditions() {
 
 
 # ==============================================================================
+# stoleus_context_set_capability_provider_override
+# ==============================================================================
+
+stoleus_context_set_capability_provider_override() {
+
+    local capability_id="${1:-}"
+    local provider_plugin_id="${2:-}"
+
+
+    if [[ -z "$capability_id" || -z "$provider_plugin_id" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Capability provider override requires capability ID and provider plugin ID." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$capability_id" =~ ^[a-z0-9][a-z0-9-]*$ ||
+          ! "$provider_plugin_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Capability provider override contains an invalid identifier." \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ "${STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES["$capability_id"]:-}" == "$provider_plugin_id" ]]; then
+        return 0
+    fi
+
+
+    STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES["$capability_id"]="$provider_plugin_id"
+
+    stoleus_context_increment_generation || return $?
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_context_get_capability_provider_override
+# ==============================================================================
+
+stoleus_context_get_capability_provider_override() {
+
+    local capability_id="${1:-}"
+
+
+    if [[ -z "$capability_id" ]]; then
+        return 2
+    fi
+
+
+    printf '%s\n' \
+        "${STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES["$capability_id"]:-}"
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_context_clear_capability_provider_override
+# ==============================================================================
+
+stoleus_context_clear_capability_provider_override() {
+
+    local capability_id="${1:-}"
+
+
+    if [[ -z "$capability_id" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Capability provider override clear requires capability ID." \
+            >&2
+
+        return 2
+    fi
+
+
+    if [[ ! "$capability_id" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+
+        printf '%s\n' \
+            "ERROR: Capability provider override contains an invalid capability ID." \
+            >&2
+
+        return 6
+    fi
+
+
+    if [[ -z "${STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES["$capability_id"]+declared}" ]]; then
+        return 0
+    fi
+
+
+    unset 'STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES[$capability_id]'
+
+    stoleus_context_increment_generation || return $?
+
+
+    return 0
+}
+
+
+# ==============================================================================
+# stoleus_context_list_capability_provider_overrides
+# ==============================================================================
+
+stoleus_context_list_capability_provider_overrides() {
+
+    local capability_id=""
+
+
+    for capability_id in "${!STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES[@]}"; do
+
+        printf '%s\t%s\n' \
+            "$capability_id" \
+            "${STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES["$capability_id"]}"
+    done
+
+
+    return 0
+}
+
+
+# ==============================================================================
 # stoleus_context_set_provider_override
 # ==============================================================================
 
@@ -477,6 +609,7 @@ stoleus_context_initialize() {
     STOLEUS_CONTEXT_VALUES=()
     STOLEUS_CONTEXT_INDEX_BY_KEY=()
     STOLEUS_CONTEXT_PROVIDER_OVERRIDES=()
+    STOLEUS_CONTEXT_CAPABILITY_PROVIDER_OVERRIDES=()
     STOLEUS_CONTEXT_GENERATION=0
 
 

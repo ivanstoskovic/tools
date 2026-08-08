@@ -142,6 +142,10 @@ source "${STOLEUS_KERNEL_ROOT}/discovery/discovery.sh"
 source "${STOLEUS_KERNEL_ROOT}/definition/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/registry/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/capability/registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/policy/provider_registry.sh"
+source "${STOLEUS_KERNEL_ROOT}/policy/provider_trace.sh"
+source "${STOLEUS_KERNEL_ROOT}/policy/provider_selection.sh"
+source "${STOLEUS_KERNEL_ROOT}/capability/policy.sh"
 source "${STOLEUS_KERNEL_ROOT}/capability/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/resolver/resolver.sh"
 source "${STOLEUS_KERNEL_ROOT}/contract/definition.sh"
@@ -208,6 +212,10 @@ stoleus_kernel_initialize() {
     stoleus_definition_initialize || return $?
     stoleus_registry_initialize || return $?
     stoleus_capability_registry_initialize || return $?
+    stoleus_provider_policy_registry_initialize || return $?
+    stoleus_provider_trace_initialize || return $?
+    stoleus_provider_selection_initialize || return $?
+    stoleus_capability_policy_initialize || return $?
     stoleus_capability_resolver_initialize || return $?
     stoleus_resolver_initialize || return $?
     stoleus_contract_definition_initialize || return $?
@@ -360,13 +368,11 @@ stoleus_kernel_run_bootstrap_stage() {
     STOLEUS_KERNEL_BOOTSTRAP_STAGE="$stage_name"
 
 
-    set +e
-
-    "$stage_function"
-
-    exit_code=$?
-
-    set -e
+    if "$stage_function"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
 
 
     if (( exit_code == 0 )); then

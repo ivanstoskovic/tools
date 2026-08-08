@@ -174,9 +174,9 @@ stoleus_capability_resolver_resolve() {
 
     local provider_plugin_id=""
     local selected_provider=""
-    local additional_provider=""
+    local override_provider=""
 
-    local provider_count=0
+    local -a candidate_providers=()
 
 
     if [[ -z "$capability_id" ]]; then
@@ -197,6 +197,16 @@ stoleus_capability_resolver_resolve() {
     stoleus_capability_resolver_require_registry || return $?
 
 
+    if [[ "${STOLEUS_CAPABILITY_POLICY_INITIALIZED:-false}" != "true" ]]; then
+
+        printf '%s\n' \
+            "ERROR: Capability Policy must be initialized before capability resolution." \
+            >&2
+
+        return 6
+    fi
+
+
     if stoleus_capability_resolver_is_resolved "$capability_id"; then
 
         selected_provider="$(
@@ -213,19 +223,19 @@ stoleus_capability_resolver_resolve() {
     fi
 
 
+    # --------------------------------------------------------------------------
+    # Collect provider facts from the Capability Registry.
+    #
+    # Selection itself belongs to Capability Policy.
+    # --------------------------------------------------------------------------
     while IFS= read -r provider_plugin_id; do
 
         [[ -z "$provider_plugin_id" ]] && continue
 
 
-        provider_count="$((provider_count + 1))"
-
-
-        if (( provider_count == 1 )); then
-            selected_provider="$provider_plugin_id"
-        else
-            additional_provider="$provider_plugin_id"
-        fi
+        candidate_providers+=(
+            "$provider_plugin_id"
+        )
 
     done < <(
         stoleus_capability_registry_list_providers \
@@ -233,24 +243,23 @@ stoleus_capability_resolver_resolve() {
     )
 
 
-    if (( provider_count == 0 )); then
-
-        printf '%s\n' \
-            "ERROR: No plugin provides required capability: ${capability_id}" \
-            >&2
-
-        return 6
-    fi
+    override_provider="$(
+        stoleus_context_get_capability_provider_override \
+            "$capability_id"
+    )" || return $?
 
 
-    if (( provider_count > 1 )); then
+    stoleus_capability_policy_select \
+        "$capability_id" \
+        "$override_provider" \
+        "${candidate_providers[@]}" \
+        >/dev/null ||
+        return $?
 
-        printf '%s\n' \
-            "ERROR: Capability '${capability_id}' has multiple providers and cannot be resolved deterministically: ${selected_provider}, ${additional_provider}" \
-            >&2
 
-        return 8
-    fi
+    selected_provider="$(
+        stoleus_provider_selection_get_selected
+    )" || return $?
 
 
     stoleus_capability_resolver_cache \
