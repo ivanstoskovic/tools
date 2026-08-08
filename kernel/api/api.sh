@@ -1091,6 +1091,27 @@ stoleus_api_register_defaults() {
     stoleus_api_register service-resolver stoleus_service_resolver_is_resolved public experimental kernel/service/resolver.sh
     stoleus_api_register service-resolver stoleus_service_resolver_reset public experimental kernel/service/resolver.sh
 
+    # Service Composition
+    stoleus_api_register composition stoleus_composition_initialize internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_reset internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_is_initialized internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_get_count internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_validate_subject_type internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_get_key internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_contains internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_cache internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_get internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_get_provider internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_sync_context internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_list_provider_requirements internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_resolve_provider internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_resolve_subject internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_format_cycle internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_leave_subject internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_list_order internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_list internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_explain_subject internal internal kernel/composition/composition.sh
+    stoleus_api_register composition stoleus_composition_explain internal internal kernel/composition/composition.sh
     # Service Invocation Runtime
     stoleus_api_register service-runtime stoleus_service_runtime_initialize internal internal kernel/service/runtime.sh
     stoleus_api_register service-runtime stoleus_service_call public experimental kernel/service/runtime.sh

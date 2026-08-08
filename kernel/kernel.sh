@@ -152,6 +152,7 @@ source "${STOLEUS_KERNEL_ROOT}/contract/definition.sh"
 source "${STOLEUS_KERNEL_ROOT}/contract/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/service/registry.sh"
 source "${STOLEUS_KERNEL_ROOT}/service/resolver.sh"
+source "${STOLEUS_KERNEL_ROOT}/composition/composition.sh"
 source "${STOLEUS_KERNEL_ROOT}/service/runtime.sh"
 source "${STOLEUS_KERNEL_ROOT}/plugin/plugin.sh"
 source "${STOLEUS_KERNEL_ROOT}/planning/planning.sh"
@@ -222,6 +223,7 @@ stoleus_kernel_initialize() {
     stoleus_contract_registry_initialize || return $?
     stoleus_service_registry_initialize || return $?
     stoleus_service_resolver_initialize || return $?
+    stoleus_composition_initialize || return $?
     stoleus_service_runtime_initialize || return $?
     stoleus_plugin_initialize || return $?
     stoleus_planning_initialize || return $?
